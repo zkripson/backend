@@ -1,67 +1,69 @@
-import { DurableObject } from "cloudflare:workers";
-
 /**
- * Welcome to Cloudflare Workers! This is your first Durable Objects application.
+ * ZK Battleship Backend Service
  *
- * - Run `npm run dev` in your terminal to start a development server
- * - Open a browser tab at http://localhost:8787/ to see your Durable Object in action
- * - Run `npm run deploy` to publish your application
- *
- * Bind resources to your worker in `wrangler.jsonc`. After adding bindings, a type definition for the
- * `Env` object can be regenerated with `npm run cf-typegen`.
- *
- * Learn more at https://developers.cloudflare.com/durable-objects
+ * Main entry point for the Cloudflare Worker that routes requests
+ * to the appropriate handler and manages Durable Object interactions.
  */
+// import { handleSessionRequest } from './api/sessions';
+// import { handlePlayerRequest } from './api/players';
+// import { handleInviteRequest } from './api/invites';
+// import { handleContractRequest } from './api/contracts';
 
+export interface Env {
+	// Durable Object bindings
+	GAME_SESSIONS: DurableObjectNamespace;
+	PLAYER_PROFILES: DurableObjectNamespace;
+	INVITE_MANAGER: DurableObjectNamespace;
 
-/** A Durable Object's behavior is defined in an exported Javascript class */
-export class MyDurableObject extends DurableObject {
-	/**
-	 * The constructor is invoked once upon creation of the Durable Object, i.e. the first call to
-	 * 	`DurableObjectStub::get` for a given identifier (no-op constructors can be omitted)
-	 *
-	 * @param ctx - The interface for interacting with Durable Object state
-	 * @param env - The interface to reference bindings declared in wrangler.jsonc
-	 */
-	constructor(ctx: DurableObjectState, env: Env) {
-		super(ctx, env);
-	}
-
-	/**
-	 * The Durable Object exposes an RPC method sayHello which will be invoked when when a Durable
-	 *  Object instance receives a request from a Worker via the same method invocation on the stub
-	 *
-	 * @param name - The name provided to a Durable Object instance from a Worker
-	 * @returns The greeting to be sent back to the Worker
-	 */
-	async sayHello(name: string): Promise<string> {
-		return `Hello, ${name}!`;
-	}
+	// Environment variables
+	MEGAETH_RPC_URL: string;
+	BASE_RPC_URL: string;
+	TOKEN_CONTRACT_ADDRESS: string;
+	DISTRIBUTOR_PRIVATE_KEY: string;
+	GAME_FACTORY_ADDRESS: string;
 }
 
 export default {
-	/**
-	 * This is the standard fetch handler for a Cloudflare Worker
-	 *
-	 * @param request - The request submitted to the Worker from the client
-	 * @param env - The interface to reference bindings declared in wrangler.jsonc
-	 * @param ctx - The execution context of the Worker
-	 * @returns The response to be sent back to the client
-	 */
-	async fetch(request, env, ctx): Promise<Response> {
-		// Create a `DurableObjectId` for an instance of the `MyDurableObject`
-		// class named "foo". Requests from all Workers to the instance named
-		// "foo" will go to a single globally unique Durable Object instance.
-		const id: DurableObjectId = env.MY_DURABLE_OBJECT.idFromName("foo");
+	// async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+	// 	const url = new URL(request.url);
+	// 	const path = url.pathname;
+	// 	// Handle WebSocket connections
+	// 	if (request.headers.get('Upgrade') === 'websocket') {
+	// 		return handleWebSocketConnection(request, env, url);
+	// 	}
+	// 	// API routes
+	// 	if (path.startsWith('/api/sessions')) {
+	// 		return handleSessionRequest(request, env, ctx);
+	// 	}
+	// 	if (path.startsWith('/api/players')) {
+	// 		return handlePlayerRequest(request, env, ctx);
+	// 	}
+	// 	if (path.startsWith('/api/invites')) {
+	// 		return handleInviteRequest(request, env, ctx);
+	// 	}
+	// 	if (path.startsWith('/api/contracts')) {
+	// 		return handleContractRequest(request, env, ctx);
+	// 	}
+	// 	// Default response for unmatched routes
+	// 	return new Response('Not Found', { status: 404 });
+	// },
+};
 
-		// Create a stub to open a communication channel with the Durable
-		// Object instance.
-		const stub = env.MY_DURABLE_OBJECT.get(id);
+/**
+ * Handles WebSocket connection requests by routing to the appropriate
+ * Durable Object based on the connection type
+ */
+async function handleWebSocketConnection(request: Request, env: Env, url: URL): Promise<Response> {
+	const sessionId = url.searchParams.get('sessionId');
 
-		// Call the `sayHello()` RPC method on the stub to invoke the method on
-		// the remote Durable Object instance
-		const greeting = await stub.sayHello("world");
+	if (!sessionId) {
+		return new Response('Missing sessionId parameter', { status: 400 });
+	}
 
-		return new Response(greeting);
-	},
-} satisfies ExportedHandler<Env>;
+	// Create or get the GameSession Durable Object
+	const id = env.GAME_SESSIONS.idFromString(sessionId);
+	const gameSession = env.GAME_SESSIONS.get(id);
+
+	// Forward the WebSocket connection to the Durable Object
+	return gameSession.fetch(request);
+}
