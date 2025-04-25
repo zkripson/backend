@@ -74,6 +74,9 @@ export class GameSession {
 		if (url.pathname.endsWith('/register-contract')) {
 			return this.handleRegisterContract(request);
 		}
+		if (url.pathname.endsWith('/initialize')) {
+			return this.handleInitializeRequest(request);
+		}
 
 		// Route API requests
 		if (url.pathname.endsWith('/join')) {
@@ -328,6 +331,66 @@ export class GameSession {
 		}
 	}
 
+	private async handleInitializeRequest(request: Request): Promise<Response> {
+		try {
+			// Parse the request body
+			const bodyText = await request.text();
+			const data = JSON.parse(bodyText);
+
+			// Check required fields
+			if (!data.sessionId || !data.creator) {
+				return new Response(
+					JSON.stringify({
+						error: 'Session ID and creator address are required',
+					}),
+					{
+						status: 400,
+						headers: { 'Content-Type': 'application/json' },
+					}
+				);
+			}
+
+			// Initialize the session
+			this.sessionId = data.sessionId;
+			this.status = 'CREATED';
+
+			// IMPORTANT: Add the creator as the first player
+			this.players = [data.creator]; // This is critical!
+
+			this.createdAt = Date.now();
+			this.lastActivityAt = Date.now();
+
+			console.log(`Session ${this.sessionId} initialized with creator ${data.creator}`);
+			console.log(`Players: ${JSON.stringify(this.players)}`);
+
+			// Save the data
+			await this.saveSessionData();
+
+			return new Response(
+				JSON.stringify({
+					success: true,
+					sessionId: this.sessionId,
+					creator: data.creator,
+					status: this.status,
+					players: this.players,
+				}),
+				{
+					headers: { 'Content-Type': 'application/json' },
+				}
+			);
+		} catch (error) {
+			console.error('Error initializing session:', error);
+			return new Response(
+				JSON.stringify({
+					error: 'Failed to initialize session: ' + (error instanceof Error ? error.message : String(error)),
+				}),
+				{
+					status: 500,
+					headers: { 'Content-Type': 'application/json' },
+				}
+			);
+		}
+	}
 	private async handleRegisterContract(request: Request): Promise<Response> {
 		try {
 			const data = (await request.json()) as { gameId: string; gameContractAddress: string };
