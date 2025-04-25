@@ -192,6 +192,23 @@ interface WebSocketMessage {
 ```
 
 ## 4. Message Types from Backend to Frontend
+# ZK Battleship WebSocket Events
+
+## Events from Backend to Frontend
+
+| Event Type | Description |
+|------------|-------------|
+| `session_state` | Initial state sent after connection is established |
+| `player_joined` | When a new player joins the game session |
+| `contract_registered` | When a game contract is registered to the game session |
+| `game_started` | When all conditions are met and the game begins |
+| `board_submitted` | When a player submits their board placement |
+| `shot_fired` | When a player takes a shot at the opponent |
+| `shot_result` | Result of a shot (hit or miss) |
+| `game_over` | When the game has ended (with winner and reason) |
+| `chat` | Chat messages from other players | (future)
+| `pong` | Response to ping messages (connection keepalive) |
+| `error` | Error messages from the server |
 
 ### 4.1 Initial State Message
 
@@ -296,33 +313,6 @@ Sent immediately after connection is established.
 {
   "type": "pong",
   "timestamp": 1682541250123
-}
-```
-
-## 5. Message Types from Frontend to Backend
-
-### 5.1 Game Event
-
-Use this to relay events that were detected client-side:
-
-```json
-{
-  "type": "game_event",
-  "event": {
-    "name": "ShotFired",
-    "player": "0x1234...",
-    "x": 5,
-    "y": 2,
-    "gameId": "1"
-  }
-}
-```
-
-### 5.2 Ping (keepalive)
-
-```json
-{
-  "type": "ping"
 }
 ```
 
