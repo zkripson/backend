@@ -17,7 +17,7 @@ export class GameSession {
 
 	// Session data
 	private sessionId: string = '';
-	private status: 'CREATED' | 'WAITING' | 'ACTIVE' | 'COMPLETED' | 'CANCELLED' = 'CREATED';
+	private status: 'CREATED' | 'WAITING' | 'ACTIVE' | 'COMPLETED' | 'CANCELLED' | 'SETUP' = 'CREATED';
 	private players: string[] = []; // Wallet addresses
 	private playerConnections: Map<string, WebSocket> = new Map();
 	private gameContractAddress: string | null = null;
@@ -496,10 +496,11 @@ export class GameSession {
 
 	// Handle board submission request
 	private async handleSubmitBoardRequest(request: Request): Promise<Response> {
-		if (this.status !== 'ACTIVE') {
+		// 1. Explicitly check valid states rather than checking if not 'ACTIVE'
+		if (this.status !== 'WAITING' && this.status !== 'SETUP' && this.status !== 'ACTIVE') {
 			return new Response(
 				JSON.stringify({
-					error: 'Game is not active',
+					error: 'Game must be in WAITING, SETUP, or ACTIVE state to submit boards',
 				}),
 				{
 					status: 400,
@@ -508,55 +509,106 @@ export class GameSession {
 			);
 		}
 
-		const data = (await request.json()) as SubmitBoardRequest;
-		const playerAddress = data.address;
-		const boardCommitment = data.boardCommitment;
+		try {
+			const data = (await request.json()) as {
+				address: string;
+				boardCommitment: string;
+			};
 
-		if (!this.players.includes(playerAddress)) {
-			return new Response(
-				JSON.stringify({
-					error: 'Not a player in this game',
-				}),
-				{
-					status: 403,
-					headers: { 'Content-Type': 'application/json' },
-				}
-			);
-		}
+			const playerAddress = data.address;
+			const boardCommitment = data.boardCommitment;
 
-		if (!boardCommitment) {
-			return new Response(
-				JSON.stringify({
-					error: 'Board commitment is required',
-				}),
-				{
-					status: 400,
-					headers: { 'Content-Type': 'application/json' },
-				}
-			);
-		}
-
-		// Store the board commitment
-		this.playerBoards.set(playerAddress, boardCommitment);
-		await this.saveSessionData();
-
-		// Notify all connected clients
-		this.broadcastToAll({
-			type: 'board_submitted',
-			player: playerAddress,
-			allBoardsSubmitted: this.playerBoards.size === this.players.length,
-		});
-
-		return new Response(
-			JSON.stringify({
-				success: true,
-				player: playerAddress,
-				allBoardsSubmitted: this.playerBoards.size === this.players.length,
-			}),
-			{
-				headers: { 'Content-Type': 'application/json' },
+			if (!this.players.includes(playerAddress)) {
+				return new Response(
+					JSON.stringify({
+						error: 'Not a player in this game',
+					}),
+					{
+						status: 403,
+						headers: { 'Content-Type': 'application/json' },
+					}
+				);
 			}
-		);
+
+			if (!boardCommitment) {
+				return new Response(
+					JSON.stringify({
+						error: 'Board commitment is required',
+					}),
+					{
+						status: 400,
+						headers: { 'Content-Type': 'application/json' },
+					}
+				);
+			}
+
+			// Store the board commitment
+			this.playerBoards.set(playerAddress, boardCommitment);
+
+			// 2. Add the new SETUP state handling - use status as string literal for clarity
+			if (this.status === 'WAITING') {
+				this.status = 'SETUP';
+			}
+
+			// 3. Check if both players have submitted boards
+			const allBoardsSubmitted = this.playerBoards.size === this.players.length;
+
+			// 4. If both boards submitted and in SETUP state, start the game
+			if (allBoardsSubmitted && this.status === 'SETUP') {
+				this.status = 'ACTIVE';
+				this.currentTurn = this.players[0]; // First player goes first
+				this.turnStartedAt = Date.now();
+
+				// Start monitoring and forfeit checks
+				if (this.gameContractAddress) {
+					this.startGameMonitoring();
+				}
+				this.scheduleForfeitCheck();
+
+				// Notify about game start
+				this.broadcastToAll({
+					type: 'game_started',
+					status: this.status,
+					currentTurn: this.currentTurn,
+					gameContractAddress: this.gameContractAddress,
+					gameId: this.gameId,
+					turnStartedAt: this.turnStartedAt,
+				});
+			}
+
+			await this.saveSessionData();
+
+			// Notify all connected clients
+			this.broadcastToAll({
+				type: 'board_submitted',
+				player: playerAddress,
+				allBoardsSubmitted: allBoardsSubmitted,
+				gameStatus: this.status,
+			});
+
+			return new Response(
+				JSON.stringify({
+					success: true,
+					player: playerAddress,
+					allBoardsSubmitted: allBoardsSubmitted,
+					gameStatus: this.status,
+				}),
+				{
+					headers: { 'Content-Type': 'application/json' },
+				}
+			);
+		} catch (error) {
+			console.error('Error submitting board:', error);
+			return new Response(
+				JSON.stringify({
+					error: 'Failed to submit board',
+				}),
+				{
+					status: 500,
+					headers: { 'Content-Type': 'application/json' },
+				}
+			);
+		}
 	}
 
 	// Process a game event (from contract or client)
