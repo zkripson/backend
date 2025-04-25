@@ -105,7 +105,7 @@ async function handleRegisterGame(request: Request, env: Env): Promise<Response>
 		}
 
 		// Get the Game Session Durable Object
-		const sessionDO = env.GAME_SESSIONS.get(env.GAME_SESSIONS.idFromString(data.sessionId));
+		const sessionDO = env.GAME_SESSIONS.get(env.GAME_SESSIONS.idFromName(data.sessionId));
 
 		// Forward the request to update session with contract info
 		const response = await sessionDO.fetch(
@@ -160,7 +160,7 @@ async function handleSyncSession(request: Request, env: Env): Promise<Response> 
 		}
 
 		// Get the Game Session Durable Object
-		const sessionDO = env.GAME_SESSIONS.get(env.GAME_SESSIONS.idFromString(data.sessionId));
+		const sessionDO = env.GAME_SESSIONS.get(env.GAME_SESSIONS.idFromName(data.sessionId));
 
 		// Forward the event to the session
 		await sessionDO.fetch(

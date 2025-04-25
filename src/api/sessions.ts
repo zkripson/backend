@@ -74,7 +74,7 @@ async function handleCreateSession(request: Request, env: Env): Promise<Response
 		const sessionId = crypto.randomUUID();
 
 		// Create a new Durable Object for the session
-		const sessionDO = env.GAME_SESSIONS.get(env.GAME_SESSIONS.idFromString(sessionId));
+		const sessionDO = env.GAME_SESSIONS.get(env.GAME_SESSIONS.idFromName(sessionId));
 
 		// Initialize the session
 		await sessionDO.fetch(
