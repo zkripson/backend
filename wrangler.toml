@@ -1,0 +1,32 @@
+name = "zk-battleship-backend"
+main = "src/index.ts"
+compatibility_date = "2025-04-01"
+compatibility_flags = ["durable_object_alarms"]
+
+# Environment variables
+[vars]
+MEGAETH_RPC_URL = "https://carrot.megaeth.com/rpc"
+GAME_FACTORY_ADDRESS = "0xGameFactoryAddressGoesHere"
+
+# Durable Object bindings
+[[durable_objects.bindings]]
+name = "GAME_SESSIONS"
+class_name = "GameSession"
+
+[[durable_objects.bindings]]
+name = "PLAYER_PROFILES"
+class_name = "PlayerProfile"
+
+[[durable_objects.bindings]]
+name = "INVITE_MANAGER" 
+class_name = "InviteManager"
+
+# Durable Object migrations
+[[migrations]]
+tag = "v1"
+new_classes = ["GameSession", "PlayerProfile", "InviteManager"]
+
+# Migrations to use SQLite backend for storage (optional)
+[[migrations]]
+tag = "v2"
+new_sqlite_classes = ["GameSession", "PlayerProfile", "InviteManager"]
