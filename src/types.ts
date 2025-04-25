@@ -28,3 +28,57 @@ export interface SubmitBoardRequest {
 	address: string;
 	boardCommitment: string;
 }
+/**
+ * PlayerProfile Durable Object
+ *
+ * Stores persistent player data including:
+ * - Game history
+ * - Win/loss records
+ * - Profile information
+ * - Preferences
+ */
+
+export interface PlayerData {
+	address: string;
+	username: string | null;
+	avatar: string | null;
+	createdAt: number;
+	lastActive: number;
+	totalGames: number;
+	wins: number;
+	losses: number;
+	gameHistory: GameHistoryEntry[];
+	preferences: PlayerPreferences;
+}
+
+export interface GameHistoryEntry {
+	gameId: string;
+	sessionId: string;
+	opponent: string;
+	startTime: number;
+	endTime: number | null;
+	outcome: 'win' | 'loss' | 'forfeit' | 'timeout' | 'ongoing' | 'canceled';
+}
+
+export interface PlayerPreferences {
+	notifications: boolean;
+	theme: 'light' | 'dark' | 'system';
+	boardLayout: string | null;
+}
+export interface GameUpdateRequest {
+	gameId: string;
+	outcome: 'win' | 'loss' | 'forfeit' | 'timeout' | 'ongoing' | 'canceled';
+	endTime?: number;
+}
+
+export interface PreferencesUpdate {
+	notifications?: boolean;
+	theme?: 'light' | 'dark' | 'system';
+	boardLayout?: string | null;
+}
+
+export interface ProfileUpdate {
+	username?: string;
+	avatar?: string;
+	address?: string;
+}
