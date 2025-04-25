@@ -8,7 +8,7 @@ export interface SessionData {
 	lastActivityAt: number;
 	currentTurn: string | null;
 	turnStartedAt: number | null;
-	playerBoards?: [string, string][]; // Optional if used
+	playerBoardsArray?: [string, string][]; // Optional if used
 }
 
 export interface JoinRequest {

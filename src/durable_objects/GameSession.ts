@@ -48,6 +48,17 @@ export class GameSession {
 				this.currentTurn = sessionData.currentTurn;
 				this.turnStartedAt = sessionData.turnStartedAt;
 
+				//Properly reconstruct the playerBoards Map
+				this.playerBoards = new Map();
+				if (sessionData.playerBoardsArray && Array.isArray(sessionData.playerBoardsArray)) {
+					for (const [address, commitment] of sessionData.playerBoardsArray) {
+						this.playerBoards.set(address, commitment);
+					}
+				}
+
+				console.log('Loaded playerBoards:', this.playerBoards);
+				console.log(`PlayerBoards size: ${this.playerBoards.size}, Players: ${this.players.length}`);
+
 				// Start monitoring game events for active games
 				if (this.status === 'ACTIVE' && this.gameContractAddress) {
 					this.startGameMonitoring();
@@ -840,6 +851,12 @@ export class GameSession {
 
 	// Save session data to durable storage
 	private async saveSessionData(): Promise<void> {
+		// Convert the Map to an array before storage
+		const playerBoardsArray = Array.from(this.playerBoards.entries());
+
+		console.log('Saving session data with playerBoards:', playerBoardsArray);
+		console.log(`PlayerBoards size: ${this.playerBoards.size}, Players: ${this.players.length}`);
+
 		const sessionData = {
 			sessionId: this.sessionId,
 			status: this.status,
@@ -850,7 +867,7 @@ export class GameSession {
 			lastActivityAt: this.lastActivityAt,
 			currentTurn: this.currentTurn,
 			turnStartedAt: this.turnStartedAt,
-			playerBoards: Array.from(this.playerBoards.entries()),
+			playerBoards: playerBoardsArray,
 		};
 
 		await this.state.storage.put('sessionData', sessionData);
