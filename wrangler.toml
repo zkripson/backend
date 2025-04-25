@@ -27,6 +27,6 @@ tag = "v1"
 new_classes = ["GameSession", "PlayerProfile", "InviteManager"]
 
 # Migrations to use SQLite backend for storage (optional)
-[[migrations]]
-tag = "v2"
-new_sqlite_classes = ["GameSession", "PlayerProfile", "InviteManager"]
+# [[migrations]]
+# tag = "v2"
+# new_sqlite_classes = ["GameSession", "PlayerProfile", "InviteManager"]

@@ -1,0 +1,651 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ZK Battleship Testing Console</title>
+    <style>
+        body {
+            font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            color: #333;
+        }
+        h1, h2, h3 {
+            color: #1a73e8;
+        }
+        .container {
+            display: flex;
+            gap: 20px;
+        }
+        .panel {
+            flex: 1;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            padding: 15px;
+            background: #f9f9f9;
+        }
+        .test-section {
+            margin-bottom: 20px;
+            border-bottom: 1px solid #eee;
+            padding-bottom: 15px;
+        }
+        button {
+            background: #1a73e8;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px 0;
+        }
+        button:hover {
+            background: #0d62c9;
+        }
+        input, select, textarea {
+            width: 100%;
+            padding: 8px;
+            margin: 5px 0;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+        #logs {
+            background: #f5f5f5;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            padding: 10px;
+            height: 300px;
+            overflow-y: auto;
+            font-family: monospace;
+            font-size: 14px;
+            white-space: pre-wrap;
+        }
+        .log-entry {
+            margin: 5px 0;
+            padding: 5px;
+            border-bottom: 1px solid #eee;
+        }
+        .log-entry.error {
+            color: red;
+        }
+        .log-entry.success {
+            color: green;
+        }
+        .tab-container {
+            margin-bottom: 20px;
+        }
+        .tab-buttons {
+            display: flex;
+            gap: 5px;
+            margin-bottom: 10px;
+        }
+        .tab-button {
+            padding: 8px 16px;
+            background: #eee;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        .tab-button.active {
+            background: #1a73e8;
+            color: white;
+            border-color: #1a73e8;
+        }
+        .tab-content {
+            display: none;
+        }
+        .tab-content.active {
+            display: block;
+        }
+    </style>
+</head>
+<body>
+    <h1>ZK Battleship Testing Console</h1>
+    
+    <div class="tab-container">
+        <div class="tab-buttons">
+            <button class="tab-button active" onclick="showTab('setup')">Setup</button>
+            <button class="tab-button" onclick="showTab('backend')">Backend API</button>
+            <button class="tab-button" onclick="showTab('websocket')">WebSockets</button>
+            <button class="tab-button" onclick="showTab('megaeth')">MegaETH</button>
+        </div>
+        
+        <div id="setup" class="tab-content active">
+            <h2>Configuration</h2>
+            <div class="test-section">
+                <h3>Backend API URL</h3>
+                <input type="text" id="backendUrl" value="http://localhost:8787" placeholder="Backend API URL">
+                <button onclick="saveConfig()">Save Config</button>
+            </div>
+            
+            <div class="test-section">
+                <h3>Test Wallet</h3>
+                <input type="text" id="walletAddress" value="0x123456789abcdef123456789abcdef123456789a" placeholder="Wallet Address">
+                <button onclick="saveWallet()">Save Wallet</button>
+            </div>
+        </div>
+        
+        <div id="backend" class="tab-content">
+            <h2>Backend API Tests</h2>
+            
+            <div class="test-section">
+                <h3>Get Contract Config</h3>
+                <button onclick="testGetContractConfig()">Get Contract Config</button>
+            </div>
+            
+            <div class="test-section">
+                <h3>Create Game Session</h3>
+                <button onclick="testCreateSession()">Create Session</button>
+            </div>
+            
+            <div class="test-section">
+                <h3>Create Invite</h3>
+                <button onclick="testCreateInvite()">Create Invite</button>
+            </div>
+            
+            <div class="test-section">
+                <h3>Get Session</h3>
+                <input type="text" id="sessionId" placeholder="Session ID">
+                <button onclick="testGetSession()">Get Session</button>
+            </div>
+            
+            <div class="test-section">
+                <h3>Join Session</h3>
+                <input type="text" id="joinSessionId" placeholder="Session ID">
+                <button onclick="testJoinSession()">Join Session</button>
+            </div>
+            
+            <div class="test-section">
+                <h3>Register Game Contract</h3>
+                <input type="text" id="regSessionId" placeholder="Session ID">
+                <input type="text" id="regGameId" placeholder="Game ID">
+                <input type="text" id="regContractAddress" placeholder="Contract Address">
+                <button onclick="testRegisterGame()">Register Game</button>
+            </div>
+        </div>
+        
+        <div id="websocket" class="tab-content">
+            <h2>WebSocket Tests</h2>
+            
+            <div class="test-section">
+                <h3>Connect to Game Session</h3>
+                <input type="text" id="wsSessionId" placeholder="Session ID">
+                <button onclick="testConnectWebSocket()">Connect WebSocket</button>
+                <button onclick="testDisconnectWebSocket()">Disconnect</button>
+            </div>
+            
+            <div class="test-section">
+                <h3>Send WebSocket Message</h3>
+                <select id="wsMessageType">
+                    <option value="chat">Chat Message</option>
+                    <option value="ping">Ping</option>
+                    <option value="game_event">Game Event</option>
+                </select>
+                <textarea id="wsMessageContent" placeholder="Message content as JSON"></textarea>
+                <button onclick="testSendWebSocketMessage()">Send Message</button>
+            </div>
+        </div>
+        
+        <div id="megaeth" class="tab-content">
+            <h2>MegaETH Tests</h2>
+            
+            <div class="test-section">
+                <h3>Connect to MegaETH Realtime API</h3>
+                <input type="text" id="megaethWsUrl" placeholder="MegaETH WebSocket URL">
+                <button onclick="testConnectMegaEthWs()">Connect</button>
+                <button onclick="testDisconnectMegaEthWs()">Disconnect</button>
+            </div>
+            
+            <div class="test-section">
+                <h3>Subscribe to Contract Events</h3>
+                <input type="text" id="contractAddress" placeholder="Contract Address">
+                <button onclick="testSubscribeToContractEvents()">Subscribe</button>
+            </div>
+            
+            <div class="test-section">
+                <h3>Subscribe to State Changes</h3>
+                <input type="text" id="stateAddress" placeholder="Account Address">
+                <button onclick="testSubscribeToStateChanges()">Subscribe</button>
+            </div>
+            
+            <div class="test-section">
+                <h3>Subscribe to Mini Blocks</h3>
+                <button onclick="testSubscribeToMiniBlocks()">Subscribe</button>
+            </div>
+        </div>
+    </div>
+    
+    <h2>Logs</h2>
+    <div id="logs"></div>
+    
+    <script>
+        // Global variables
+        let backendUrl = localStorage.getItem('backendUrl') || 'http://localhost:8787';
+        let walletAddress = localStorage.getItem('walletAddress') || '0x123456789abcdef123456789abcdef123456789a';
+        let gameWs = null;
+        let megaethWs = null;
+        
+        // Initialize form values from localStorage
+        document.getElementById('backendUrl').value = backendUrl;
+        document.getElementById('walletAddress').value = walletAddress;
+        
+        // Tab functionality
+        function showTab(tabId) {
+            // Hide all tabs
+            document.querySelectorAll('.tab-content').forEach(tab => {
+                tab.classList.remove('active');
+            });
+            document.querySelectorAll('.tab-button').forEach(button => {
+                button.classList.remove('active');
+            });
+            
+            // Show selected tab
+            document.getElementById(tabId).classList.add('active');
+            document.querySelector(`.tab-button[onclick="showTab('${tabId}')"]`).classList.add('active');
+        }
+        
+        // Logger functions
+        function log(message, type = 'info') {
+            const logsEl = document.getElementById('logs');
+            const entry = document.createElement('div');
+            entry.classList.add('log-entry', type);
+            
+            // Format objects/arrays as JSON
+            if (typeof message === 'object') {
+                message = JSON.stringify(message, null, 2);
+            }
+            
+            entry.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+            logsEl.appendChild(entry);
+            logsEl.scrollTop = logsEl.scrollHeight;
+        }
+        
+        function logError(message) {
+            log(message, 'error');
+        }
+        
+        function logSuccess(message) {
+            log(message, 'success');
+        }
+        
+        // Configuration functions
+        function saveConfig() {
+            backendUrl = document.getElementById('backendUrl').value;
+            localStorage.setItem('backendUrl', backendUrl);
+            logSuccess(`Backend URL saved: ${backendUrl}`);
+        }
+        
+        function saveWallet() {
+            walletAddress = document.getElementById('walletAddress').value;
+            localStorage.setItem('walletAddress', walletAddress);
+            logSuccess(`Wallet address saved: ${walletAddress}`);
+        }
+        
+        // Backend API test functions
+        async function testGetContractConfig() {
+            try {
+                log(`Fetching contract config from ${backendUrl}/api/contracts/config`);
+                const response = await fetch(`${backendUrl}/api/contracts/config`);
+                const data = await response.json();
+                logSuccess('Contract config received:');
+                log(data);
+            } catch (error) {
+                logError(`Error fetching contract config: ${error.message}`);
+            }
+        }
+        
+        async function testCreateSession() {
+            try {
+                log(`Creating session with wallet ${walletAddress}`);
+                const response = await fetch(`${backendUrl}/api/sessions/create`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        creator: walletAddress
+                    })
+                });
+                const data = await response.json();
+                logSuccess('Session created:');
+                log(data);
+                
+                // Auto-fill session ID fields
+                if (data.sessionId) {
+                    document.getElementById('sessionId').value = data.sessionId;
+                    document.getElementById('joinSessionId').value = data.sessionId;
+                    document.getElementById('wsSessionId').value = data.sessionId;
+                    document.getElementById('regSessionId').value = data.sessionId;
+                }
+            } catch (error) {
+                logError(`Error creating session: ${error.message}`);
+            }
+        }
+        
+        async function testCreateInvite() {
+            try {
+                log(`Creating invite with wallet ${walletAddress}`);
+                const response = await fetch(`${backendUrl}/api/invites/create`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        creator: walletAddress
+                    })
+                });
+                const data = await response.json();
+                logSuccess('Invite created:');
+                log(data);
+            } catch (error) {
+                logError(`Error creating invite: ${error.message}`);
+            }
+        }
+        
+        async function testGetSession() {
+            const sessionId = document.getElementById('sessionId').value;
+            if (!sessionId) {
+                logError('Session ID is required');
+                return;
+            }
+            
+            try {
+                log(`Fetching session ${sessionId}`);
+                const response = await fetch(`${backendUrl}/api/sessions/${sessionId}`);
+                const data = await response.json();
+                logSuccess('Session data received:');
+                log(data);
+            } catch (error) {
+                logError(`Error fetching session: ${error.message}`);
+            }
+        }
+        
+        async function testJoinSession() {
+            const sessionId = document.getElementById('joinSessionId').value;
+            if (!sessionId) {
+                logError('Session ID is required');
+                return;
+            }
+            
+            try {
+                log(`Joining session ${sessionId} with wallet ${walletAddress}`);
+                const response = await fetch(`${backendUrl}/api/sessions/${sessionId}/join`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        address: walletAddress
+                    })
+                });
+                const data = await response.json();
+                logSuccess('Joined session:');
+                log(data);
+            } catch (error) {
+                logError(`Error joining session: ${error.message}`);
+            }
+        }
+        
+        async function testRegisterGame() {
+            const sessionId = document.getElementById('regSessionId').value;
+            const gameId = document.getElementById('regGameId').value;
+            const contractAddress = document.getElementById('regContractAddress').value;
+            
+            if (!sessionId || !gameId || !contractAddress) {
+                logError('Session ID, Game ID, and Contract Address are required');
+                return;
+            }
+            
+            try {
+                log(`Registering game contract for session ${sessionId}`);
+                const response = await fetch(`${backendUrl}/api/contracts/register-game`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        sessionId,
+                        gameId,
+                        gameContractAddress: contractAddress
+                    })
+                });
+                const data = await response.json();
+                logSuccess('Game contract registered:');
+                log(data);
+            } catch (error) {
+                logError(`Error registering game contract: ${error.message}`);
+            }
+        }
+        
+        // WebSocket test functions
+        function testConnectWebSocket() {
+            const sessionId = document.getElementById('wsSessionId').value;
+            if (!sessionId) {
+                logError('Session ID is required');
+                return;
+            }
+            
+            // Close existing connection if any
+            if (gameWs) {
+                gameWs.close();
+                gameWs = null;
+            }
+            
+            // Create new WebSocket connection
+            const wsUrl = `${backendUrl.replace('http', 'ws')}/api/game-updates?sessionId=${sessionId}&address=${walletAddress}`;
+            log(`Connecting to WebSocket: ${wsUrl}`);
+            
+            gameWs = new WebSocket(wsUrl);
+            
+            gameWs.onopen = () => {
+                logSuccess('WebSocket connection established');
+            };
+            
+            gameWs.onmessage = (event) => {
+                try {
+                    const data = JSON.parse(event.data);
+                    log('WebSocket message received:');
+                    log(data);
+                } catch (error) {
+                    log(`Raw WebSocket message: ${event.data}`);
+                }
+            };
+            
+            gameWs.onerror = (error) => {
+                logError(`WebSocket error: ${error.message || 'Unknown error'}`);
+            };
+            
+            gameWs.onclose = () => {
+                log('WebSocket connection closed');
+            };
+        }
+        
+        function testDisconnectWebSocket() {
+            if (gameWs) {
+                gameWs.close();
+                gameWs = null;
+                log('WebSocket disconnected');
+            } else {
+                logError('No active WebSocket connection');
+            }
+        }
+        
+        function testSendWebSocketMessage() {
+            if (!gameWs || gameWs.readyState !== WebSocket.OPEN) {
+                logError('No active WebSocket connection');
+                return;
+            }
+            
+            const messageType = document.getElementById('wsMessageType').value;
+            let messageContent = document.getElementById('wsMessageContent').value;
+            
+            try {
+                // If content is provided, parse it as JSON
+                if (messageContent) {
+                    messageContent = JSON.parse(messageContent);
+                } else {
+                    // Default content based on message type
+                    switch (messageType) {
+                        case 'chat':
+                            messageContent = { text: 'Hello from testing console!' };
+                            break;
+                        case 'ping':
+                            messageContent = {};
+                            break;
+                        case 'game_event':
+                            messageContent = {
+                                event: {
+                                    name: 'ShotFired',
+                                    player: walletAddress,
+                                    x: 5,
+                                    y: 7,
+                                    gameId: document.getElementById('regGameId').value || '123'
+                                }
+                            };
+                            break;
+                    }
+                }
+                
+                const message = {
+                    type: messageType,
+                    ...messageContent
+                };
+                
+                log(`Sending WebSocket message:`);
+                log(message);
+                gameWs.send(JSON.stringify(message));
+            } catch (error) {
+                logError(`Error sending WebSocket message: ${error.message}`);
+            }
+        }
+        
+        // MegaETH test functions
+        function testConnectMegaEthWs() {
+            const wsUrl = document.getElementById('megaethWsUrl').value;
+            if (!wsUrl) {
+                logError('MegaETH WebSocket URL is required');
+                return;
+            }
+            
+            // Close existing connection if any
+            if (megaethWs) {
+                megaethWs.close();
+                megaethWs = null;
+            }
+            
+            // Create new WebSocket connection
+            log(`Connecting to MegaETH WebSocket: ${wsUrl}`);
+            
+            megaethWs = new WebSocket(wsUrl);
+            
+            megaethWs.onopen = () => {
+                logSuccess('MegaETH WebSocket connection established');
+            };
+            
+            megaethWs.onmessage = (event) => {
+                try {
+                    const data = JSON.parse(event.data);
+                    log('MegaETH WebSocket message received:');
+                    log(data);
+                } catch (error) {
+                    log(`Raw MegaETH message: ${event.data}`);
+                }
+            };
+            
+            megaethWs.onerror = (error) => {
+                logError(`MegaETH WebSocket error: ${error.message || 'Unknown error'}`);
+            };
+            
+            megaethWs.onclose = () => {
+                log('MegaETH WebSocket connection closed');
+            };
+        }
+        
+        function testDisconnectMegaEthWs() {
+            if (megaethWs) {
+                megaethWs.close();
+                megaethWs = null;
+                log('MegaETH WebSocket disconnected');
+            } else {
+                logError('No active MegaETH WebSocket connection');
+            }
+        }
+        
+        function testSubscribeToContractEvents() {
+            if (!megaethWs || megaethWs.readyState !== WebSocket.OPEN) {
+                logError('No active MegaETH WebSocket connection');
+                return;
+            }
+            
+            const contractAddress = document.getElementById('contractAddress').value;
+            if (!contractAddress) {
+                logError('Contract address is required');
+                return;
+            }
+            
+            // ShotFired, ShotResult, and GameCompleted event signatures
+            const eventTopics = [
+                "0x3a9e47588c8175a500eec33e983974e93aec6c02d5ac9985b9e88e27e7a9b3cb",
+                "0x9c5f5af1ca785633358f1aa606d964c927558ce3ce5e9e2e270c66c8a65fecd9",
+                "0xf168bbf52af41088f8a709042ec88261e309c3c9e7c0f7b66773c27c5da78c57"
+            ];
+            
+            const subscribeRequest = {
+                method: 'eth_subscribe',
+                params: [
+                    'logs',
+                    {
+                        address: contractAddress,
+                        topics: [eventTopics],
+                        fromBlock: "pending",
+                        toBlock: "pending"
+                    }
+                ],
+                id: 1
+            };
+            
+            log(`Subscribing to contract events:`);
+            log(subscribeRequest);
+            megaethWs.send(JSON.stringify(subscribeRequest));
+        }
+        
+        function testSubscribeToStateChanges() {
+            if (!megaethWs || megaethWs.readyState !== WebSocket.OPEN) {
+                logError('No active MegaETH WebSocket connection');
+                return;
+            }
+            
+            const address = document.getElementById('stateAddress').value || walletAddress;
+            
+            const subscribeRequest = {
+                method: 'eth_subscribe',
+                params: ['stateChange', [address]],
+                id: 1
+            };
+            
+            log(`Subscribing to state changes for ${address}:`);
+            log(subscribeRequest);
+            megaethWs.send(JSON.stringify(subscribeRequest));
+        }
+        
+        function testSubscribeToMiniBlocks() {
+            if (!megaethWs || megaethWs.readyState !== WebSocket.OPEN) {
+                logError('No active MegaETH WebSocket connection');
+                return;
+            }
+            
+            const subscribeRequest = {
+                method: 'eth_subscribe',
+                params: ['fragment'],
+                id: 1
+            };
+            
+            log(`Subscribing to mini blocks:`);
+            log(subscribeRequest);
+            megaethWs.send(JSON.stringify(subscribeRequest));
+        }
+    </script>
+</body>
+</html>
