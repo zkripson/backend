@@ -70,6 +70,11 @@ export class GameSession {
 			return this.handleWebSocketConnection(request);
 		}
 
+		// Handle contract registration
+		if (url.pathname.endsWith('/register-contract')) {
+			return this.handleRegisterContract(request);
+		}
+
 		// Route API requests
 		if (url.pathname.endsWith('/join')) {
 			return this.handleJoinRequest(request);
@@ -281,6 +286,68 @@ export class GameSession {
 				headers: { 'Content-Type': 'application/json' },
 			}
 		);
+	}
+
+	private async handleRegisterContract(request: Request): Promise<Response> {
+		try {
+			const data = (await request.json()) as { gameId: string; gameContractAddress: string };
+
+			// Validate required data
+			if (!data.gameId || !data.gameContractAddress) {
+				return new Response(
+					JSON.stringify({
+						error: 'Game ID and contract address are required',
+					}),
+					{
+						status: 400,
+						headers: { 'Content-Type': 'application/json' },
+					}
+				);
+			}
+
+			// Update session with contract info without changing state
+			this.gameContractAddress = data.gameContractAddress;
+			this.gameId = data.gameId;
+
+			// Save changes
+			await this.saveSessionData();
+
+			// Start monitoring game events if already active
+			if (this.status === 'ACTIVE') {
+				this.startGameMonitoring();
+			}
+
+			// Notify connected clients
+			this.broadcastToAll({
+				type: 'contract_registered',
+				gameContractAddress: this.gameContractAddress,
+				gameId: this.gameId,
+			});
+
+			return new Response(
+				JSON.stringify({
+					success: true,
+					sessionId: this.sessionId,
+					status: this.status,
+					gameContractAddress: this.gameContractAddress,
+					gameId: this.gameId,
+				}),
+				{
+					headers: { 'Content-Type': 'application/json' },
+				}
+			);
+		} catch (error) {
+			console.error('Error registering contract:', error);
+			return new Response(
+				JSON.stringify({
+					error: 'Failed to register contract',
+				}),
+				{
+					status: 500,
+					headers: { 'Content-Type': 'application/json' },
+				}
+			);
+		}
 	}
 
 	// Handle game start request

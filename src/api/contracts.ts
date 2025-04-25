@@ -109,7 +109,7 @@ async function handleRegisterGame(request: Request, env: Env): Promise<Response>
 
 		// Forward the request to update session with contract info
 		const response = await sessionDO.fetch(
-			new Request('https://dummy-url/start', {
+			new Request('https://dummy-url/register-contract', {
 				method: 'POST',
 				headers: {
 					'Content-Type': 'application/json',
