@@ -60,6 +60,23 @@ export class GameSession {
 			}
 		});
 	}
+	async alarm(): Promise<void> {
+		console.log('Alarm triggered for game event polling');
+
+		try {
+			// Only poll if we have an active game with a contract address
+			if (this.status === 'ACTIVE' && this.gameContractAddress) {
+				await this.pollGameEvents();
+			}
+
+			// Reschedule the next poll
+			this.schedulePollEvents();
+		} catch (error) {
+			console.error('Error in game event polling:', error);
+			// Even if there's an error, reschedule the next poll
+			this.schedulePollEvents();
+		}
+	}
 
 	// Handle HTTP requests
 	async fetch(request: Request): Promise<Response> {
@@ -649,6 +666,9 @@ export class GameSession {
 			}
 
 			if (!this.players.includes(playerAddress)) {
+				// Log details for debugging
+				console.log(`Not a player error: Address ${playerAddress} not found in players list: ${JSON.stringify(this.players)}`);
+
 				return new Response(
 					JSON.stringify({
 						error: 'Not a player in this game',
@@ -681,6 +701,7 @@ export class GameSession {
 			}
 
 			// Check if both players have submitted boards
+			console.log(this.playerBoards, this.players, 'board size');
 			const allBoardsSubmitted = this.playerBoards.size === this.players.length;
 
 			// If both boards submitted and in SETUP state, start the game
@@ -691,8 +712,14 @@ export class GameSession {
 
 				// Start monitoring and forfeit checks
 				if (this.gameContractAddress) {
-					this.startGameMonitoring();
+					try {
+						this.startGameMonitoring(); // Using the new polling-based monitoring
+					} catch (monitorError) {
+						console.error('Error setting up game monitoring:', monitorError);
+						// Continue despite monitoring error - don't block the game from starting
+					}
 				}
+
 				this.scheduleForfeitCheck();
 
 				// Notify about game start
@@ -845,16 +872,179 @@ export class GameSession {
 	// Start monitoring game events from the contract
 	private startGameMonitoring(): void {
 		if (!this.gameContractAddress || !this.env.MEGAETH_RPC_URL) {
+			console.log('Cannot start game monitoring: missing contract address or RPC URL');
 			return;
 		}
 
-		// Set up event monitoring
-		monitorGameEvents(this.env.MEGAETH_RPC_URL, this.gameContractAddress, (event) => {
-			// Process events from the contract
-			this.processGameEvent(event, 'contract');
-		});
+		console.log(`Starting game monitoring for contract ${this.gameContractAddress} via JSON-RPC polling`);
+
+		// Instead of WebSockets, set up a periodic polling mechanism
+		// This is more appropriate for server-side environments like Cloudflare Workers
+
+		// For Durable Objects, we can use the alarm API to periodically poll for events
+		this.schedulePollEvents();
 	}
 
+	private schedulePollEvents(): void {
+		// Schedule an alarm for 5 seconds from now
+		// This is more appropriate than setInterval for Durable Objects
+		this.state.storage.setAlarm(Date.now() + 5000);
+	}
+
+	private async pollGameEvents(): Promise<void> {
+		if (!this.gameContractAddress || !this.env.MEGAETH_RPC_URL) {
+			return;
+		}
+
+		try {
+			// Get latest events using JSON-RPC API
+			const response = await fetch(this.env.MEGAETH_RPC_URL, {
+				method: 'POST',
+				headers: {
+					'Content-Type': 'application/json',
+				},
+				body: JSON.stringify({
+					jsonrpc: '2.0',
+					id: 1,
+					method: 'eth_getLogs',
+					params: [
+						{
+							address: this.gameContractAddress,
+							fromBlock: 'latest',
+							toBlock: 'latest',
+							topics: [
+								[
+									'0x3a9e47588c8175a500eec33e983974e93aec6c02d5ac9985b9e88e27e7a9b3cb', // ShotFired
+									'0x9c5f5af1ca785633358f1aa606d964c927558ce3ce5e9e2e270c66c8a65fecd9', // ShotResult
+									'0xf168bbf52af41088f8a709042ec88261e309c3c9e7c0f7b66773c27c5da78c57', // GameCompleted
+								],
+							],
+						},
+					],
+				}),
+			});
+
+			const data = (await response.json()) as { result: any[] };
+
+			// Process any events found
+			if (data.result && Array.isArray(data.result)) {
+				for (const log of data.result) {
+					// Use the parsing functions from megaeth.ts
+					const parsedEvent = this.parseEventLog(log);
+					if (parsedEvent) {
+						console.log('Parsed game event:', parsedEvent);
+						this.processGameEvent(parsedEvent, 'contract');
+					}
+				}
+			}
+		} catch (error) {
+			console.error('Error polling game events:', error);
+		}
+	}
+
+	// Copy the parseEventLog and related functions from megaeth.ts
+	private parseEventLog(log: any): any | null {
+		// Determine event type from topic
+		const eventTopic = log.topics[0];
+
+		const EVENT_TOPICS = {
+			ShotFired: '0x3a9e47588c8175a500eec33e983974e93aec6c02d5ac9985b9e88e27e7a9b3cb',
+			ShotResult: '0x9c5f5af1ca785633358f1aa606d964c927558ce3ce5e9e2e270c66c8a65fecd9',
+			GameCompleted: '0xf168bbf52af41088f8a709042ec88261e309c3c9e7c0f7b66773c27c5da78c57',
+		};
+
+		switch (eventTopic) {
+			case EVENT_TOPICS.ShotFired:
+				return this.parseShotFiredEvent(log);
+
+			case EVENT_TOPICS.ShotResult:
+				return this.parseShotResultEvent(log);
+
+			case EVENT_TOPICS.GameCompleted:
+				return this.parseGameCompletedEvent(log);
+
+			default:
+				return null;
+		}
+	}
+
+	private parseShotFiredEvent(log: any): any {
+		// Extract player address from indexed parameter
+		const playerHex = log.topics[1];
+		const player = '0x' + playerHex.slice(26);
+
+		// Decode the data field (x, y coordinates)
+		const data = log.data.slice(2); // remove 0x prefix
+
+		// In Solidity, uint8 takes up a full 32 bytes in the ABI encoding
+		const x = parseInt(data.slice(0, 64), 16);
+		const y = parseInt(data.slice(64, 128), 16);
+
+		// Extract gameId from indexed parameter
+		const gameId = parseInt(log.topics[2], 16).toString();
+
+		return {
+			name: 'ShotFired',
+			player,
+			x,
+			y,
+			gameId,
+			blockNumber: log.blockNumber,
+			transactionHash: log.transactionHash,
+			timestamp: Date.now(),
+		};
+	}
+
+	private parseShotResultEvent(log: any): any {
+		// Extract player address from indexed parameter
+		const playerHex = log.topics[1];
+		const player = '0x' + playerHex.slice(26);
+
+		// Decode the data field (x, y, isHit)
+		const data = log.data.slice(2); // remove 0x prefix
+
+		const x = parseInt(data.slice(0, 64), 16);
+		const y = parseInt(data.slice(64, 128), 16);
+		const isHit = parseInt(data.slice(128, 192), 16) === 1;
+
+		// Extract gameId from indexed parameter
+		const gameId = parseInt(log.topics[2], 16).toString();
+
+		return {
+			name: 'ShotResult',
+			player,
+			x,
+			y,
+			isHit,
+			gameId,
+			blockNumber: log.blockNumber,
+			transactionHash: log.transactionHash,
+			timestamp: Date.now(),
+		};
+	}
+
+	private parseGameCompletedEvent(log: any): any {
+		// Extract winner address from indexed parameter
+		const winnerHex = log.topics[1];
+		const winner = '0x' + winnerHex.slice(26);
+
+		// Extract gameId from indexed parameter
+		const gameId = parseInt(log.topics[2], 16).toString();
+
+		// Decode the data field (endTime)
+		const data = log.data.slice(2); // remove 0x prefix
+		const endTime = parseInt(data.slice(0, 64), 16) * 1000; // Convert to milliseconds
+
+		return {
+			name: 'GameCompleted',
+			winner,
+			gameId,
+			endTime,
+			blockNumber: log.blockNumber,
+			transactionHash: log.transactionHash,
+			timestamp: Date.now(),
+		};
+	}
 	// Schedule auto-forfeit check after 5 minutes of inactivity
 	private scheduleForfeitCheck(): void {
 		// Clear any existing timeout

@@ -157,6 +157,11 @@
                 <h3>Create Invite</h3>
                 <button onclick="testCreateInvite()">Create Invite</button>
             </div>
+            <div class="test-section">
+  <h3>Check Session Details</h3>
+  <input type="text" id="checkSessionId" placeholder="Session ID">
+  <button onclick="checkSessionDetails()">Check Session</button>
+</div>
             
             <div class="test-section">
                 <h3>Get Session</h3>
@@ -355,6 +360,41 @@
     .catch(error => {
         logError(`Error submitting board: ${error.message}`);
     });
+}
+
+function checkSessionDetails() {
+  const sessionId = document.getElementById('checkSessionId').value;
+  
+  if (!sessionId) {
+    logError('Session ID is required');
+    return;
+  }
+  
+  log(`Checking session details for ${sessionId}...`);
+  
+  fetch(`${backendUrl}/api/sessions/${sessionId}`, {
+    method: 'GET',
+    headers: {
+      'Content-Type': 'application/json'
+    }
+  })
+  .then(response => response.json())
+  .then(data => {
+    logSuccess('Session details:');
+    log(data);
+    
+    // Highlight important info
+    if (data.players && data.players.length > 0) {
+      logSuccess(`Players in session: ${data.players.join(', ')}`);
+    } else {
+      logError('No players registered in this session!');
+    }
+    
+    logSuccess(`Game status: ${data.status}`);
+  })
+  .catch(error => {
+    logError(`Error checking session: ${error.message}`);
+  });
 }
         
 function testAcceptInvite() {

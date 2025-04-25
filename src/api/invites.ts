@@ -94,16 +94,30 @@ async function handleCreateInvite(request: Request, env: Env): Promise<Response>
 /**
  * Handle POST /api/invites/accept - Accept an invitation
  */
+/**
+ * Handle POST /api/invites/accept - Accept an invitation
+ */
 async function handleAcceptInvite(request: Request, env: Env): Promise<Response> {
 	// Ensure the request is a POST
 	if (request.method !== 'POST') {
 		return new Response(JSON.stringify({ error: 'Method not allowed' }), {
 			status: 405,
-			headers: { 'Content-Type': 'application/json' },
+			headers: {
+				'Content-Type': 'application/json',
+				'Access-Control-Allow-Origin': '*',
+				'Access-Control-Allow-Methods': 'POST, OPTIONS',
+				'Access-Control-Allow-Headers': 'Content-Type',
+			},
 		});
 	}
 
 	try {
+		// Read request body just once and clone it
+		const bodyText = await request.text();
+
+		// Log the invite acceptance attempt to help with debugging
+		console.log('Invite acceptance request:', bodyText);
+
 		// Get the Invite Manager Durable Object
 		const inviteManager = env.INVITE_MANAGER.get(env.INVITE_MANAGER.idFromName('global'));
 
@@ -111,36 +125,41 @@ async function handleAcceptInvite(request: Request, env: Env): Promise<Response>
 		const response = await inviteManager.fetch(
 			new Request('https://dummy-url/accept', {
 				method: 'POST',
-				headers: request.headers,
-				body: request.body,
+				headers: {
+					'Content-Type': 'application/json',
+				},
+				body: bodyText,
 			})
 		);
 
-		// If successful, also update the player profiles
-		if (response.status === 200) {
-			try {
-				const responseData = (await response.clone().json()) as InvitationUpdate;
-
-				if (responseData.creator && responseData.acceptedBy) {
-					// Update creator's profile
-					await updatePlayerGameHistory(responseData.creator, responseData, env);
-
-					// Update acceptor's profile
-					await updatePlayerGameHistory(responseData.acceptedBy, responseData, env);
-				}
-			} catch (error) {
-				console.error('Error updating player profiles after invite acceptance:', error);
-				// Continue anyway - don't fail the invite acceptance
-			}
-		}
-
-		return response;
+		// Add CORS headers to the response
+		const responseData = await response.json();
+		return new Response(JSON.stringify(responseData), {
+			status: response.status,
+			headers: {
+				'Content-Type': 'application/json',
+				'Access-Control-Allow-Origin': '*',
+				'Access-Control-Allow-Methods': 'POST, OPTIONS',
+				'Access-Control-Allow-Headers': 'Content-Type',
+			},
+		});
 	} catch (error) {
 		console.error('Error accepting invitation:', error);
-		return new Response(JSON.stringify({ error: 'Failed to accept invitation' }), {
-			status: 500,
-			headers: { 'Content-Type': 'application/json' },
-		});
+		return new Response(
+			JSON.stringify({
+				error: 'Failed to accept invitation',
+				details: error instanceof Error ? error.message : String(error),
+			}),
+			{
+				status: 500,
+				headers: {
+					'Content-Type': 'application/json',
+					'Access-Control-Allow-Origin': '*',
+					'Access-Control-Allow-Methods': 'POST, OPTIONS',
+					'Access-Control-Allow-Headers': 'Content-Type',
+				},
+			}
+		);
 	}
 }
 
