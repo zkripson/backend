@@ -221,71 +221,111 @@ export class GameSession {
 
 	// Handle a player joining the game
 	private async handleJoinRequest(request: Request): Promise<Response> {
-		if (this.status !== 'CREATED' && this.status !== 'WAITING') {
-			return new Response(
-				JSON.stringify({
-					error: 'Game session is not accepting new players',
-				}),
-				{
-					status: 400,
-					headers: { 'Content-Type': 'application/json' },
-				}
-			);
-		}
-
-		if (this.players.length >= 2) {
-			return new Response(
-				JSON.stringify({
-					error: 'Game session is full',
-				}),
-				{
-					status: 400,
-					headers: { 'Content-Type': 'application/json' },
-				}
-			);
-		}
-
-		const data = (await request.json()) as JoinRequest;
-		const playerAddress = data.address;
-
-		if (!playerAddress) {
-			return new Response(
-				JSON.stringify({
-					error: 'Player address is required',
-				}),
-				{
-					status: 400,
-					headers: { 'Content-Type': 'application/json' },
-				}
-			);
-		}
-
-		// Add the player if not already in the game
-		if (!this.players.includes(playerAddress)) {
-			this.players.push(playerAddress);
-			this.status = 'WAITING';
-			await this.saveSessionData();
-		}
-
-		// Notify all connected clients about the new player
-		this.broadcastToAll({
-			type: 'player_joined',
-			address: playerAddress,
-			players: this.players,
-			status: this.status,
-		});
-
-		return new Response(
-			JSON.stringify({
-				success: true,
-				sessionId: this.sessionId,
-				status: this.status,
-				players: this.players,
-			}),
-			{
-				headers: { 'Content-Type': 'application/json' },
+		try {
+			// First, ensure we're in a valid state to accept new players
+			// Game should be in CREATED or WAITING state to accept new players
+			if (this.status !== 'CREATED' && this.status !== 'WAITING') {
+				return new Response(
+					JSON.stringify({
+						error: 'Game session is not accepting new players',
+					}),
+					{
+						status: 400,
+						headers: { 'Content-Type': 'application/json' },
+					}
+				);
 			}
-		);
+
+			if (this.players.length >= 2) {
+				return new Response(
+					JSON.stringify({
+						error: 'Game session is full',
+					}),
+					{
+						status: 400,
+						headers: { 'Content-Type': 'application/json' },
+					}
+				);
+			}
+
+			// Parse request body
+			const bodyText = await request.text();
+			let data;
+			try {
+				data = JSON.parse(bodyText);
+			} catch (error) {
+				return new Response(
+					JSON.stringify({
+						error: 'Invalid JSON in request body',
+					}),
+					{
+						status: 400,
+						headers: { 'Content-Type': 'application/json' },
+					}
+				);
+			}
+
+			const playerAddress = data.address;
+
+			if (!playerAddress) {
+				return new Response(
+					JSON.stringify({
+						error: 'Player address is required',
+					}),
+					{
+						status: 400,
+						headers: { 'Content-Type': 'application/json' },
+					}
+				);
+			}
+
+			// Add the player if not already in the game
+			if (!this.players.includes(playerAddress)) {
+				this.players.push(playerAddress);
+
+				// IMPORTANT: Explicitly transition from CREATED to WAITING
+				if (this.status === 'CREATED') {
+					this.status = 'WAITING';
+				}
+
+				// Save updated session state
+				await this.saveSessionData();
+
+				// Debug log to verify the state change
+				console.log(`Game ${this.sessionId} - Player ${playerAddress} joined. New status: ${this.status}. Players: ${this.players.length}`);
+			}
+
+			// Notify all connected clients about the new player
+			this.broadcastToAll({
+				type: 'player_joined',
+				address: playerAddress,
+				players: this.players,
+				status: this.status,
+			});
+
+			return new Response(
+				JSON.stringify({
+					success: true,
+					sessionId: this.sessionId,
+					status: this.status,
+					players: this.players,
+				}),
+				{
+					headers: { 'Content-Type': 'application/json' },
+				}
+			);
+		} catch (error) {
+			console.error('Error handling join request:', error);
+			return new Response(
+				JSON.stringify({
+					error: 'Failed to join session: ' + (error instanceof Error ? error.message : String(error)),
+				}),
+				{
+					status: 500,
+					headers: { 'Content-Type': 'application/json' },
+				}
+			);
+		}
 	}
 
 	private async handleRegisterContract(request: Request): Promise<Response> {
@@ -496,7 +536,7 @@ export class GameSession {
 
 	// Handle board submission request
 	private async handleSubmitBoardRequest(request: Request): Promise<Response> {
-		// 1. Explicitly check valid states rather than checking if not 'ACTIVE'
+		// Check game state upfront before trying to read request body
 		if (this.status !== 'WAITING' && this.status !== 'SETUP' && this.status !== 'ACTIVE') {
 			return new Response(
 				JSON.stringify({
@@ -509,14 +549,41 @@ export class GameSession {
 			);
 		}
 
-		try {
-			const data = (await request.json()) as {
-				address: string;
-				boardCommitment: string;
-			};
+		let playerAddress;
+		let boardCommitment;
 
-			const playerAddress = data.address;
-			const boardCommitment = data.boardCommitment;
+		try {
+			// Get a text copy of the body first
+			const bodyText = await request.text();
+			if (!bodyText) {
+				return new Response(
+					JSON.stringify({
+						error: 'Empty request body',
+					}),
+					{
+						status: 400,
+						headers: { 'Content-Type': 'application/json' },
+					}
+				);
+			}
+
+			// Parse it as JSON
+			const data = JSON.parse(bodyText);
+			playerAddress = data.address;
+			boardCommitment = data.boardCommitment;
+
+			// Validate required fields
+			if (!playerAddress) {
+				return new Response(
+					JSON.stringify({
+						error: 'Player address is required',
+					}),
+					{
+						status: 400,
+						headers: { 'Content-Type': 'application/json' },
+					}
+				);
+			}
 
 			if (!this.players.includes(playerAddress)) {
 				return new Response(
@@ -545,15 +612,15 @@ export class GameSession {
 			// Store the board commitment
 			this.playerBoards.set(playerAddress, boardCommitment);
 
-			// 2. Add the new SETUP state handling - use status as string literal for clarity
+			// Add the new SETUP state handling
 			if (this.status === 'WAITING') {
 				this.status = 'SETUP';
 			}
 
-			// 3. Check if both players have submitted boards
+			// Check if both players have submitted boards
 			const allBoardsSubmitted = this.playerBoards.size === this.players.length;
 
-			// 4. If both boards submitted and in SETUP state, start the game
+			// If both boards submitted and in SETUP state, start the game
 			if (allBoardsSubmitted && this.status === 'SETUP') {
 				this.status = 'ACTIVE';
 				this.currentTurn = this.players[0]; // First player goes first
@@ -601,7 +668,7 @@ export class GameSession {
 			console.error('Error submitting board:', error);
 			return new Response(
 				JSON.stringify({
-					error: 'Failed to submit board',
+					error: 'Failed to submit board: ' + (error instanceof Error ? error.message : String(error)),
 				}),
 				{
 					status: 500,

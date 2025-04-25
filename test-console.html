@@ -135,6 +135,13 @@
     <input type="text" id="inviteCode" placeholder="Invite Code (e.g., ABC-DEF-GH)">
     <button onclick="testAcceptInvite()">Accept Invite</button>
 </div>
+
+<div class="test-section">
+    <h3>Submit Board</h3>
+    <input type="text" id="submitBoardSessionId" placeholder="Session ID">
+    <input type="text" id="boardCommitment" placeholder="Board Commitment (leave empty for random)" value="">
+    <button onclick="testSubmitBoard()">Submit Board</button>
+</div>
             
             <div class="test-section">
                 <h3>Get Contract Config</h3>
@@ -301,6 +308,54 @@
                 logError(`Error fetching contract config: ${error.message}`);
             }
         }
+
+        function testSubmitBoard() {
+    const sessionId = document.getElementById('submitBoardSessionId').value || document.getElementById('wsSessionId').value;
+    let boardCommitment = document.getElementById('boardCommitment').value;
+    const walletAddress = document.getElementById('walletAddress').value;
+    
+    if (!sessionId) {
+        logError('Session ID is required');
+        return;
+    }
+    
+    // Generate a random board commitment if not provided
+    if (!boardCommitment) {
+        // Create a random 64-character hex string
+        boardCommitment = "0x" + Array.from({length: 64}, () => 
+            Math.floor(Math.random() * 16).toString(16)).join('');
+        document.getElementById('boardCommitment').value = boardCommitment;
+    }
+    
+    log(`Submitting board for session ${sessionId} with wallet ${walletAddress}`);
+    log(`Board commitment: ${boardCommitment}`);
+    
+    fetch(`${backendUrl}/api/sessions/${sessionId}/submit-board`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+            address: walletAddress,
+            boardCommitment: boardCommitment
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        logSuccess('Board submitted:');
+        log(data);
+        
+        // Check if all boards submitted and game started
+        if (data.allBoardsSubmitted && data.gameStatus === 'ACTIVE') {
+            logSuccess('All boards submitted! Game has started.');
+        } else if (data.gameStatus === 'SETUP') {
+            logSuccess('Game is in setup mode. Waiting for opponent to submit board.');
+        }
+    })
+    .catch(error => {
+        logError(`Error submitting board: ${error.message}`);
+    });
+}
         
 function testAcceptInvite() {
     const inviteCode = document.getElementById('inviteCode').value;
@@ -368,24 +423,35 @@ function testAcceptInvite() {
         }
         
         async function testCreateInvite() {
-            try {
-                log(`Creating invite with wallet ${walletAddress}`);
-                const response = await fetch(`${backendUrl}/api/invites/create`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        creator: walletAddress
-                    })
-                });
-                const data = await response.json();
-                logSuccess('Invite created:');
-                log(data);
-            } catch (error) {
-                logError(`Error creating invite: ${error.message}`);
-            }
+    const walletAddress = document.getElementById('walletAddress').value;
+    const sessionId = document.getElementById('sessionId').value;
+    
+    log(`Creating invite with wallet ${walletAddress}${sessionId ? ` linked to session ${sessionId}` : ''}`);
+    
+    fetch(`${backendUrl}/api/invites/create`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+            creator: walletAddress,
+            sessionId: sessionId || null
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        logSuccess('Invite created:');
+        log(data);
+        // Auto-fill invite code if there's an accept field
+        const inviteCodeField = document.getElementById('inviteCode');
+        if (inviteCodeField && data.code) {
+            inviteCodeField.value = data.code;
         }
+    })
+    .catch(error => {
+        logError(`Error creating invite: ${error.message}`);
+    });
+}
         
         async function testGetSession() {
             const sessionId = document.getElementById('sessionId').value;

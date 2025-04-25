@@ -61,6 +61,14 @@ async function handleCreateInvite(request: Request, env: Env): Promise<Response>
 	}
 
 	try {
+		// Clone the request to ensure body can be read
+		const requestClone = new Request(request.url, {
+			method: request.method,
+			headers: request.headers,
+			body: await request.clone().text(),
+			redirect: request.redirect,
+		});
+
 		// Get the Invite Manager Durable Object
 		const inviteManager = env.INVITE_MANAGER.get(env.INVITE_MANAGER.idFromName('global'));
 
@@ -68,8 +76,8 @@ async function handleCreateInvite(request: Request, env: Env): Promise<Response>
 		const response = await inviteManager.fetch(
 			new Request('https://dummy-url/create', {
 				method: 'POST',
-				headers: request.headers,
-				body: request.body,
+				headers: requestClone.headers,
+				body: requestClone.body,
 			})
 		);
 

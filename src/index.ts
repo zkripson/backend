@@ -38,6 +38,12 @@ export interface Env {
 
 export default {
 	async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
+		// Special handling for WebSocket upgrades at the very beginning
+		if (request.headers.get('Upgrade')?.toLowerCase() === 'websocket') {
+			const url = new URL(request.url);
+			return handleWebSocketConnection(request, env, url);
+		}
+
 		// Handle CORS preflight requests
 		if (request.method === 'OPTIONS') {
 			return handleOptions(request);
@@ -50,10 +56,10 @@ export default {
 		} catch (e) {
 			// Handle any uncaught errors
 			console.error('Unhandled error:', e);
-			const errorResponse = new Response(JSON.stringify({ error: 'Internal Server Error' }), {
-				status: 500,
-				headers: { 'Content-Type': 'application/json' },
-			});
+			const errorResponse = new Response(
+				JSON.stringify({ error: 'Internal Server Error', message: e instanceof Error ? e.message : String(e) }),
+				{ status: 500, headers: { 'Content-Type': 'application/json' } }
+			);
 			return addCorsHeaders(errorResponse);
 		}
 	},
@@ -66,12 +72,10 @@ async function handleRequest(request: Request, env: Env, ctx: ExecutionContext):
 	const url = new URL(request.url);
 	const path = url.pathname;
 
-	// Handle WebSocket connections (for real-time game updates)
-	if (request.headers.get('Upgrade')?.toLowerCase() === 'websocket') {
-		return handleWebSocketConnection(request, env, url);
-	}
+	// Note: WebSocket handling is now done in the main fetch handler
+	// This eliminates a potential double-handling situation
 
-	// Route to appropriate API handlers
+	// API routes
 	if (path.startsWith('/api/sessions')) {
 		return handleSessionRequest(request, env, ctx);
 	}
@@ -173,9 +177,17 @@ function handleOptions(request: Request): Response {
  * Adds CORS headers to a response
  */
 function addCorsHeaders(response: Response): Response {
+	// For WebSocket responses (status 101), don't modify them
+	if (response.status === 101) {
+		return response;
+	}
+
+	// Check if the status code is valid (200-599)
+	const status = response.status >= 200 && response.status <= 599 ? response.status : 500; // Use 500 as fallback for invalid status codes
+
 	// Create a new response with the original's body, status and status text
 	const newResponse = new Response(response.body, {
-		status: response.status,
+		status,
 		statusText: response.statusText,
 		headers: response.headers,
 	});

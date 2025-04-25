@@ -207,19 +207,27 @@ async function handleSessionAction(sessionId: string, action: string, request: R
 		// Get the Durable Object for the session
 		const sessionDO = env.GAME_SESSIONS.get(env.GAME_SESSIONS.idFromName(sessionId));
 
+		// Clone the request to ensure body can be read
+		const requestClone = new Request(request.url, {
+			method: request.method,
+			headers: request.headers,
+			body: await request.clone().text(), // Clone and read as text
+			redirect: request.redirect,
+		});
+
 		// Forward the request to the appropriate endpoint on the Durable Object
-		const response = await sessionDO.fetch(
+		return await sessionDO.fetch(
 			new Request(`https://dummy-url/${action}`, {
 				method: 'POST',
-				headers: request.headers,
-				body: request.body,
+				headers: {
+					'Content-Type': 'application/json',
+				},
+				body: requestClone.body,
 			})
 		);
-
-		return response;
-	} catch (error) {
-		console.error(`Error handling session action ${action}:`, error);
-		return new Response(JSON.stringify({ error: `Failed to process ${action} action` }), {
+	} catch (error: any) {
+		console.error(`Error handling session action ${action}:`, error as Error);
+		return new Response(JSON.stringify({ error: `Failed to process ${action} action: ${error.message}` }), {
 			status: 500,
 			headers: { 'Content-Type': 'application/json' },
 		});

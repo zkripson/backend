@@ -78,9 +78,24 @@ export class InviteManager {
 	}
 
 	// Handle POST /create - Create a new invitation
+	// Handle POST /create - Create a new invitation
 	private async handleCreateInvite(request: Request): Promise<Response> {
 		try {
-			const data = (await request.json()) as InvitationCreateRequest;
+			const bodyText = await request.text();
+			let data;
+			try {
+				data = JSON.parse(bodyText);
+			} catch (error) {
+				return new Response(
+					JSON.stringify({
+						error: 'Invalid JSON in request body',
+					}),
+					{
+						status: 400,
+						headers: { 'Content-Type': 'application/json' },
+					}
+				);
+			}
 
 			if (!data.creator) {
 				return new Response(JSON.stringify({ error: 'Creator address is required' }), {
@@ -88,6 +103,9 @@ export class InviteManager {
 					headers: { 'Content-Type': 'application/json' },
 				});
 			}
+
+			// Check if a session ID is provided to link to this invite
+			const existingSessionId = data.sessionId;
 
 			// Generate a unique invite code and ID
 			const code = await generateInviteCode();
@@ -104,7 +122,7 @@ export class InviteManager {
 				creator: data.creator,
 				createdAt: Date.now(),
 				expiresAt,
-				sessionId: null,
+				sessionId: existingSessionId || null, // Store linked session ID if provided
 				status: 'pending',
 				acceptedBy: null,
 				acceptedAt: null,
@@ -121,6 +139,7 @@ export class InviteManager {
 					code,
 					creator: data.creator,
 					expiresAt,
+					sessionId: existingSessionId,
 					inviteLink: `${new URL(request.url).origin}/invite/${code}`,
 				}),
 				{
@@ -128,17 +147,37 @@ export class InviteManager {
 				}
 			);
 		} catch (error) {
-			return new Response(JSON.stringify({ error: 'Invalid request data' }), {
-				status: 400,
-				headers: { 'Content-Type': 'application/json' },
-			});
+			console.error('Error creating invite:', error);
+			return new Response(
+				JSON.stringify({
+					error: 'Failed to create invitation: ' + (error instanceof Error ? error.message : String(error)),
+				}),
+				{
+					status: 500,
+					headers: { 'Content-Type': 'application/json' },
+				}
+			);
 		}
 	}
 
 	// Handle POST /accept - Accept an invitation
 	private async handleAcceptInvite(request: Request): Promise<Response> {
 		try {
-			const data = (await request.json()) as InvitationUpdate;
+			const bodyText = await request.text();
+			let data;
+			try {
+				data = JSON.parse(bodyText);
+			} catch (error) {
+				return new Response(
+					JSON.stringify({
+						error: 'Invalid JSON in request body',
+					}),
+					{
+						status: 400,
+						headers: { 'Content-Type': 'application/json' },
+					}
+				);
+			}
 
 			if (!data.code || !data.player) {
 				return new Response(JSON.stringify({ error: 'Invite code and player address are required' }), {
@@ -191,36 +230,86 @@ export class InviteManager {
 				});
 			}
 
-			// Create a new game session
-			const sessionId = crypto.randomUUID();
-			const sessionDO = this.env.GAME_SESSIONS.get(this.env.GAME_SESSIONS.idFromName(sessionId));
+			let sessionId;
+			let gameStatus;
 
-			// Initialize the session with the creator
-			await sessionDO.fetch(
-				new Request('https://dummy-url/initialize', {
-					method: 'POST',
-					headers: {
-						'Content-Type': 'application/json',
-					},
-					body: JSON.stringify({
-						sessionId,
-						creator: invite.creator,
-					}),
-				})
-			);
+			// Check if invite already has a session ID linked to it
+			if (invite.sessionId) {
+				console.log(`Using existing session ${invite.sessionId} from the invite`);
+				sessionId = invite.sessionId;
 
-			// Add the accepting player to the session
-			await sessionDO.fetch(
-				new Request('https://dummy-url/join', {
-					method: 'POST',
-					headers: {
-						'Content-Type': 'application/json',
-					},
-					body: JSON.stringify({
-						address: data.player,
-					}),
-				})
-			);
+				// Get the existing Game Session Durable Object
+				const sessionDO = this.env.GAME_SESSIONS.get(this.env.GAME_SESSIONS.idFromName(sessionId));
+
+				// Join the existing session
+				const joinResponse = await sessionDO.fetch(
+					new Request('https://dummy-url/join', {
+						method: 'POST',
+						headers: {
+							'Content-Type': 'application/json',
+						},
+						body: JSON.stringify({
+							address: data.player,
+						}),
+					})
+				);
+
+				if (joinResponse.status !== 200) {
+					const errorText = await joinResponse.text();
+					console.error(`Error joining existing session: ${errorText}`);
+					return new Response(
+						JSON.stringify({
+							error: `Failed to join existing session: ${errorText}`,
+						}),
+						{
+							status: 500,
+							headers: { 'Content-Type': 'application/json' },
+						}
+					);
+				}
+
+				const joinData = await joinResponse.json();
+				console.log('Joined existing session:', joinData);
+				gameStatus = joinData.status;
+			} else {
+				// Create a new game session (original behavior)
+				console.log('Creating new session (no linked session ID)');
+				sessionId = crypto.randomUUID();
+
+				// Get the Game Session Durable Object
+				const sessionDO = this.env.GAME_SESSIONS.get(this.env.GAME_SESSIONS.idFromName(sessionId));
+
+				// Initialize the session with the creator
+				await sessionDO.fetch(
+					new Request('https://dummy-url/initialize', {
+						method: 'POST',
+						headers: {
+							'Content-Type': 'application/json',
+						},
+						body: JSON.stringify({
+							sessionId,
+							creator: invite.creator,
+						}),
+					})
+				);
+
+				// Add the accepting player to the session
+				const joinResponse = await sessionDO.fetch(
+					new Request('https://dummy-url/join', {
+						method: 'POST',
+						headers: {
+							'Content-Type': 'application/json',
+						},
+						body: JSON.stringify({
+							address: data.player,
+						}),
+					})
+				);
+
+				const joinData = await joinResponse.json();
+				console.log('Created and joined new session:', joinData);
+				gameStatus = joinData.status;
+			}
 
 			// Update the invitation
 			invite.status = 'accepted';
@@ -237,6 +326,7 @@ export class InviteManager {
 					sessionId: sessionId,
 					creator: invite.creator,
 					acceptedBy: data.player,
+					status: gameStatus || 'WAITING',
 				}),
 				{
 					headers: { 'Content-Type': 'application/json' },
@@ -244,13 +334,17 @@ export class InviteManager {
 			);
 		} catch (error) {
 			console.error('Error accepting invite:', error);
-			return new Response(JSON.stringify({ error: 'Failed to accept invitation' }), {
-				status: 500,
-				headers: { 'Content-Type': 'application/json' },
-			});
+			return new Response(
+				JSON.stringify({
+					error: 'Failed to accept invitation: ' + (error instanceof Error ? error.message : String(error)),
+				}),
+				{
+					status: 500,
+					headers: { 'Content-Type': 'application/json' },
+				}
+			);
 		}
 	}
-
 	// Handle POST /cancel - Cancel an invitation
 	private async handleCancelInvite(request: Request): Promise<Response> {
 		try {
