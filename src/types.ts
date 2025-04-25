@@ -111,3 +111,7 @@ export interface InvitationCreateRequest {
 	expirationHours: number;
 	sessionId: string | null;
 }
+
+export interface SessionCreateRequest {
+	creator: string;
+}
