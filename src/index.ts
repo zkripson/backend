@@ -126,7 +126,7 @@ async function handleWebSocketConnection(request: Request, env: Env, url: URL): 
 
 	try {
 		// Create or get the GameSession Durable Object
-		const id = env.GAME_SESSIONS.idFromString(sessionId);
+		const id = env.GAME_SESSIONS.idFromName(sessionId);
 		const gameSession = env.GAME_SESSIONS.get(id);
 
 		// Forward the WebSocket connection to the Durable Object

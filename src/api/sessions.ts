@@ -168,7 +168,7 @@ async function handleListSessions(request: Request, env: Env): Promise<Response>
 async function handleGetSession(sessionId: string, env: Env): Promise<Response> {
 	try {
 		// Get the Durable Object for the session
-		const sessionDO = env.GAME_SESSIONS.get(env.GAME_SESSIONS.idFromString(sessionId));
+		const sessionDO = env.GAME_SESSIONS.get(env.GAME_SESSIONS.idFromName(sessionId));
 
 		// Forward the request to the Durable Object
 		const response = await sessionDO.fetch(

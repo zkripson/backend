@@ -129,6 +129,12 @@
         
         <div id="backend" class="tab-content">
             <h2>Backend API Tests</h2>
+
+            <div class="test-section">
+    <h3>Accept Invite</h3>
+    <input type="text" id="inviteCode" placeholder="Invite Code (e.g., ABC-DEF-GH)">
+    <button onclick="testAcceptInvite()">Accept Invite</button>
+</div>
             
             <div class="test-section">
                 <h3>Get Contract Config</h3>
@@ -295,6 +301,43 @@
                 logError(`Error fetching contract config: ${error.message}`);
             }
         }
+        
+function testAcceptInvite() {
+    const inviteCode = document.getElementById('inviteCode').value;
+    const walletAddress = document.getElementById('walletAddress').value;
+    
+    if (!inviteCode) {
+        logError('Invite code is required');
+        return;
+    }
+    
+    log(`Accepting invite ${inviteCode} with wallet ${walletAddress}`);
+    
+    fetch(`${backendUrl}/api/invites/accept`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+            code: inviteCode,
+            player: walletAddress
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        logSuccess('Invite accepted:');
+        log(data);
+        
+        // Auto-fill session ID if available
+        if (data.sessionId) {
+            document.getElementById('sessionId').value = data.sessionId;
+            document.getElementById('wsSessionId').value = data.sessionId;
+        }
+    })
+    .catch(error => {
+        logError(`Error accepting invite: ${error.message}`);
+    });
+}
         
         async function testCreateSession() {
             try {

@@ -193,7 +193,7 @@ export class InviteManager {
 
 			// Create a new game session
 			const sessionId = crypto.randomUUID();
-			const sessionDO = this.env.GAME_SESSIONS.get(this.env.GAME_SESSIONS.idFromString(sessionId));
+			const sessionDO = this.env.GAME_SESSIONS.get(this.env.GAME_SESSIONS.idFromName(sessionId));
 
 			// Initialize the session with the creator
 			await sessionDO.fetch(
