@@ -82,3 +82,32 @@ export interface ProfileUpdate {
 	avatar?: string;
 	address?: string;
 }
+
+export interface Invitation {
+	id: string;
+	code: string;
+	creator: string;
+	createdAt: number;
+	expiresAt: number;
+	sessionId: string | null;
+	status: 'pending' | 'accepted' | 'expired' | 'canceled';
+	acceptedBy: string | null;
+	acceptedAt: number | null;
+}
+
+export interface InvitationUpdate {
+	id: string;
+	status: 'pending' | 'accepted' | 'expired' | 'canceled';
+	code: string | null;
+	player: string | null;
+	creator: string | null;
+	acceptedBy: string | null;
+	acceptedAt: number | null;
+}
+
+export interface InvitationCreateRequest {
+	code: string;
+	creator: string;
+	expirationHours: number;
+	sessionId: string | null;
+}
