@@ -36,19 +36,21 @@ This document outlines the comprehensive integration flow between the frontend, 
      │ 1. Create Invite    │                       │
      │─────────────────────►                       │
      │                     │                       │
-     │ 2. Invite Created   │                       │
+     │                     │ 2. Create Session     │
+     │                     │                       │
+     │ 3. Invite+Session Created                   │
      │◄─────────────────────                       │
      │                     │                       │
-     │ 3. Share Invite Link│                       │
+     │ 4. Share Invite Link│                       │
      │                     │                       │
 ┌────┴────┐         ┌─────┴──────┐         ┌──────┴──────┐
 │ Player 2 │         │   Backend   │         │  MegaETH    │
 └────┬────┘         └──────┬──────┘         └──────┬──────┘
      │                     │                       │
-     │ 4. Accept Invite    │                       │
+     │ 5. Accept Invite    │                       │
      │─────────────────────►                       │
      │                     │                       │
-     │ 5. Session Created  │                       │
+     │ 6. Join Session     │                       │
      │◄─────────────────────                       │
      │                     │                       │
 ```
@@ -56,15 +58,17 @@ This document outlines the comprehensive integration flow between the frontend, 
 **Contract Functions: None yet**
 
 **Backend API Calls:**
-- `POST /api/invites/create` - Player 1 creates invite
-- `POST /api/invites/accept` - Player 2 accepts invite
+- `POST /api/invites/create` - Player 1 creates invite (session is automatically created)
+- `POST /api/invites/accept` - Player 2 accepts invite (joins existing session)
 
 **Implementation Details:**
 1. Player 1 creates an invite via the backend
-2. Player 1 receives a shareable invite code/link
-3. Player 1 shares link with Player 2 via messaging, social media, etc.
-4. Player 2 opens the invite link and accepts it
-5. Backend creates a game session and notifies both players
+2. Backend automatically creates a game session and associates it with the invitation
+3. Player 1 receives a shareable invite code/link
+4. Player 1 shares link with Player 2 via messaging, social media, etc.
+5. Player 2 opens the invite link and accepts it
+6. Backend adds Player 2 to the existing session and notifies both players
+7. Both players connect to the session via WebSocket to receive real-time updates
 
 ### 2. Contract Creation & Registration
 
@@ -425,145 +429,36 @@ This approach maintains both privacy and game integrity:
 - Your opponent never sees your full board, only hit/miss results
 - The smart contract verifies all proofs, acting as the trusted referee
 
-## ZK Proof Generation Guidelines
-
-For generating the required zero-knowledge proofs:
-
-### 1. Board Placement Proof
-
-**Purpose:** Prove board has valid ship configuration without revealing positions
-**Inputs:**
-- Board state (positions of all ships)
-- Salt (random value for privacy)
-**Constraints:**
-- Ships have correct sizes (5,4,3,3,2)
-- No ships overlap
-- All ships within board boundaries
-**Output:** Proof that board commitment is valid
-
-### 2. Shot Result Proof
-
-**Purpose:** Prove shot result is correct without revealing board
-**Inputs:**
-- Board state
-- Shot coordinates
-- Hit/miss result
-- Salt
-**Constraints:**
-- Result matches actual board state at coordinates
-**Output:** Proof that reported hit/miss is accurate
-
-### 3. Game End Proof
-
-**Purpose:** Prove all ships are sunk
-**Inputs:**
-- Board state
-- Shot history
-- Salt
-**Constraints:**
-- All ship positions have been hit
-**Output:** Proof that victory condition is met
-
-## End Game Detection
-
-The frontend needs to automatically detect when all ships are sunk to trigger the game end verification. Here's how this works:
-
-### Tracking Ship Status
-
-1. **Local Board State Tracking**:
-   - Frontend maintains two board models in memory:
-     - Player's own board (with full ship positions)
-     - Opponent's board (with hit/miss information only)
-
-2. **Hit Counting**:
-   - For opponent's board, frontend tracks:
-     - Total successful hits made
-     - Positions of all hits
-   - The contract defines `TOTAL_SHIP_CELLS = 17` (5+4+3+3+2 ships)
-
-3. **Victory Detection Algorithm**:
-   ```javascript
-   // In the frontend game state manager
-   function checkForVictory() {
-     // Get the total number of hit cells on opponent's board
-     const totalHits = opponentBoard.getHitCount();
-     
-     // Check if all ship cells are hit
-     if (totalHits >= TOTAL_SHIP_CELLS) {
-       // Victory detected - prepare to generate end game proof
-       generateEndGameProof();
-     }
-   }
-   ```
-
-4. **Contract Verification**:
-   - The smart contract also maintains hit counts via the `GameStorage` library:
-   ```solidity
-   // From GameStorage.sol
-   struct Board {
-     // ... other fields
-     uint8 hitsReceived; // Counter for how many successful hits received
-   }
-   
-   function recordHit(
-     GameState storage gameState,
-     address target,
-     uint8 x,
-     uint8 y
-   ) internal returns (bool gameOver) {
-     // ... set hit in bitMap
-     
-     // Increment hits received counter
-     gameState.boards[target].hitsReceived += 1;
-     
-     // Check if all ships are sunk
-     return gameState.boards[target].hitsReceived >= TOTAL_SHIP_CELLS;
-   }
-   ```
-
-### End Game Flow
-
-1. **Detection Trigger**:
-   - After every successful hit, the frontend calls `checkForVictory()`
-   - Both contract and frontend maintain identical hit counts
-
-2. **Automatic Proof Generation**:
-   - When victory is detected, frontend automatically:
-     - Generates the game end ZK proof
-     - Calls `verifyGameEnd(opponentBoardCommitment, zkProof)`
-   - No manual user action needed
-
-3. **Contract Validation**:
-   - Contract verifies the proof
-   - If valid, emits `GameCompleted` event with winner
-   - Backend detects event and notifies both players
-
-This approach ensures that victory conditions are detected immediately and consistently between frontend and smart contract, while maintaining the ZK privacy guarantees.
-
 ## Optimized User Experience
 
 To minimize user interactions:
 
-1. **Automatic Contract Creation:**
+1. **Streamlined Invitation Flow:**
+   - Player 1 creates an invitation link in one click
+   - Behind the scenes, a session is automatically created
+   - Player 2 joins with a single click on the invite link
+   - No manual session creation or management needed
+
+2. **Automatic Contract Creation:**
    - When Player 2 joins a session, Player 1's client automatically calls `createGame()`
    - No manual confirmation needed for contract creation
 
-2. **Streamlined Setup Flow:**
+3. **Streamlined Setup Flow:**
    - Player places ships via drag-and-drop or auto-placement
    - Single "Ready" button generates commitment, proof, and submits board
 
-3. **One-Click Shooting:**
+4. **One-Click Shooting:**
    - Player clicks on target grid cell
    - Frontend automatically calls `makeShot()` without confirmation
 
-4. **Automatic Response to Shots:**
+5. **Automatic Response to Shots:**
    - When shot received, frontend automatically:
      - Determines hit/miss
      - Generates proof
      - Submits result
    - No confirmation needed from user
 
-5. **End Game Detection:**
+6. **End Game Detection:**
    - Frontend automatically detects when all ships are sunk
    - Automatically submits game end verification
    - No manual claim needed

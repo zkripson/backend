@@ -5,7 +5,7 @@
  * - Creating invite links with unique codes
  * - Tracking invitation status
  * - Managing invitation expiration
- * - Creating game sessions when invites are accepted
+ * - Creating game sessions when invites are created
  */
 import { Invitation, InvitationCreateRequest, InvitationUpdate } from '../types';
 import { generateInviteCode } from '../utils/crypto';
@@ -78,7 +78,6 @@ export class InviteManager {
 	}
 
 	// Handle POST /create - Create a new invitation
-	// Handle POST /create - Create a new invitation
 	private async handleCreateInvite(request: Request): Promise<Response> {
 		try {
 			const bodyText = await request.text();
@@ -104,9 +103,6 @@ export class InviteManager {
 				});
 			}
 
-			// Check if a session ID is provided to link to this invite
-			const existingSessionId = data.sessionId;
-
 			// Generate a unique invite code and ID
 			const code = await generateInviteCode();
 			const id = crypto.randomUUID();
@@ -115,14 +111,36 @@ export class InviteManager {
 			const expirationHours = data.expirationHours || 24;
 			const expiresAt = Date.now() + expirationHours * 60 * 60 * 1000;
 
-			// Create the invitation
+			// CHANGE: Always create a new session when an invitation is created
+			const sessionId = crypto.randomUUID();
+
+			// Create a new game session Durable Object
+			const sessionDO = this.env.GAME_SESSIONS.get(this.env.GAME_SESSIONS.idFromName(sessionId));
+
+			// Initialize the session with the creator
+			await sessionDO.fetch(
+				new Request('https://dummy-url/initialize', {
+					method: 'POST',
+					headers: {
+						'Content-Type': 'application/json',
+					},
+					body: JSON.stringify({
+						sessionId,
+						creator: data.creator,
+					}),
+				})
+			);
+
+			console.log(`Created new session ${sessionId} for invitation ${id}`);
+
+			// Create the invitation with automatically created session
 			const invitation: Invitation = {
 				id,
 				code,
 				creator: data.creator,
 				createdAt: Date.now(),
 				expiresAt,
-				sessionId: existingSessionId || null, // Store linked session ID if provided
+				sessionId: sessionId, // Store the session ID
 				status: 'pending',
 				acceptedBy: null,
 				acceptedAt: null,
@@ -133,13 +151,45 @@ export class InviteManager {
 			this.codeToInviteMap.set(code, id);
 			await this.saveInvites();
 
+			// Try to update the player profile to record the new game
+			try {
+				// Get or create player profile
+				const playerIdFromAddress = this.env.PLAYER_PROFILES.idFromName(data.creator);
+				const playerProfile = this.env.PLAYER_PROFILES.get(playerIdFromAddress);
+
+				// Check if profile exists, if not initialize it
+				const profileCheckResponse = await playerProfile.fetch(
+					new Request('https://dummy-url/profile', {
+						method: 'GET',
+					})
+				);
+
+				if (profileCheckResponse.status === 404) {
+					// Initialize the player profile
+					await playerProfile.fetch(
+						new Request('https://dummy-url/initialize', {
+							method: 'POST',
+							headers: {
+								'Content-Type': 'application/json',
+							},
+							body: JSON.stringify({
+								address: data.creator,
+							}),
+						})
+					);
+				}
+			} catch (error) {
+				// Log but don't fail if player profile update fails
+				console.error('Error updating player profile:', error);
+			}
+
 			return new Response(
 				JSON.stringify({
 					id,
 					code,
 					creator: data.creator,
 					expiresAt,
-					sessionId: existingSessionId,
+					sessionId: sessionId,
 					inviteLink: `${new URL(request.url).origin}/invite/${code}`,
 				}),
 				{
@@ -230,94 +280,105 @@ export class InviteManager {
 				});
 			}
 
-			let sessionId;
+			let sessionId = invite.sessionId;
 			let gameStatus;
 
-			// Check if invite already has a session ID linked to it
-			if (invite.sessionId) {
-				console.log(`Using existing session ${invite.sessionId} from the invite`);
-				sessionId = invite.sessionId;
-
-				// Get the existing Game Session Durable Object
-				const sessionDO = this.env.GAME_SESSIONS.get(this.env.GAME_SESSIONS.idFromName(sessionId));
-
-				// Join the existing session
-				const joinResponse = await sessionDO.fetch(
-					new Request('https://dummy-url/join', {
-						method: 'POST',
-						headers: {
-							'Content-Type': 'application/json',
-						},
-						body: JSON.stringify({
-							address: data.player,
-						}),
-					})
-				);
-
-				if (joinResponse.status !== 200) {
-					const errorText = await joinResponse.text();
-					console.error(`Error joining existing session: ${errorText}`);
-					return new Response(
-						JSON.stringify({
-							error: `Failed to join existing session: ${errorText}`,
-						}),
-						{
-							status: 500,
-							headers: { 'Content-Type': 'application/json' },
-						}
-					);
-				}
-
-				const joinData = await joinResponse.json();
-				console.log('Joined existing session:', joinData);
-				gameStatus = joinData.status;
-			} else {
-				// Create a new game session (original behavior)
-				console.log('Creating new session (no linked session ID)');
-				sessionId = crypto.randomUUID();
-
-				// Get the Game Session Durable Object
-				const sessionDO = this.env.GAME_SESSIONS.get(this.env.GAME_SESSIONS.idFromName(sessionId));
-
-				// Initialize the session with the creator
-				await sessionDO.fetch(
-					new Request('https://dummy-url/initialize', {
-						method: 'POST',
-						headers: {
-							'Content-Type': 'application/json',
-						},
-						body: JSON.stringify({
-							sessionId,
-							creator: invite.creator,
-						}),
-					})
-				);
-
-				// Add the accepting player to the session
-				const joinResponse = await sessionDO.fetch(
-					new Request('https://dummy-url/join', {
-						method: 'POST',
-						headers: {
-							'Content-Type': 'application/json',
-						},
-						body: JSON.stringify({
-							address: data.player,
-						}),
-					})
-				);
-
-				const joinData = await joinResponse.json();
-				console.log('Created and joined new session:', joinData);
-				gameStatus = joinData.status;
+			// CHANGE: The session should always exist at this point since we create it when creating the invitation
+			if (!sessionId) {
+				return new Response(JSON.stringify({ error: 'No session found for this invitation' }), {
+					status: 500,
+					headers: { 'Content-Type': 'application/json' },
+				});
 			}
+
+			// Get the existing Game Session Durable Object
+			const sessionDO = this.env.GAME_SESSIONS.get(this.env.GAME_SESSIONS.idFromName(sessionId));
+
+			// Join the existing session
+			const joinResponse = await sessionDO.fetch(
+				new Request('https://dummy-url/join', {
+					method: 'POST',
+					headers: {
+						'Content-Type': 'application/json',
+					},
+					body: JSON.stringify({
+						address: data.player,
+					}),
+				})
+			);
+
+			if (joinResponse.status !== 200) {
+				const errorText = await joinResponse.text();
+				console.error(`Error joining existing session: ${errorText}`);
+				return new Response(
+					JSON.stringify({
+						error: `Failed to join existing session: ${errorText}`,
+					}),
+					{
+						status: 500,
+						headers: { 'Content-Type': 'application/json' },
+					}
+				);
+			}
+
+			const joinData = await joinResponse.json();
+			console.log('Joined existing session:', joinData);
+			gameStatus = joinData.status;
 
 			// Update the invitation
 			invite.status = 'accepted';
 			invite.acceptedBy = data.player;
 			invite.acceptedAt = Date.now();
-			invite.sessionId = sessionId;
 
 			await this.saveInvites();
+
+			// Try to update player profile
+			try {
+				// Get or create player profile
+				const playerIdFromAddress = this.env.PLAYER_PROFILES.idFromName(data.player);
+				const playerProfile = this.env.PLAYER_PROFILES.get(playerIdFromAddress);
+
+				// Check if profile exists, if not initialize it
+				const profileCheckResponse = await playerProfile.fetch(
+					new Request('https://dummy-url/profile', {
+						method: 'GET',
+					})
+				);
+
+				if (profileCheckResponse.status === 404) {
+					// Initialize the player profile
+					await playerProfile.fetch(
+						new Request('https://dummy-url/initialize', {
+							method: 'POST',
+							headers: {
+								'Content-Type': 'application/json',
+							},
+							body: JSON.stringify({
+								address: data.player,
+							}),
+						})
+					);
+				}
+
+				// Add game to history
+				await playerProfile.fetch(
+					new Request('https://dummy-url/add-game', {
+						method: 'POST',
+						headers: {
+							'Content-Type': 'application/json',
+						},
+						body: JSON.stringify({
+							gameId: crypto.randomUUID(), // Generate a temporary ID until contract is created
+							sessionId: sessionId,
+							opponent: invite.creator,
+							startTime: Date.now(),
+						}),
+					})
+				);
+			} catch (error) {
+				// Log but don't fail if player profile update fails
+				console.error('Error updating player profile:', error);
+			}
 
 			return new Response(
 				JSON.stringify({
@@ -345,6 +406,7 @@ export class InviteManager {
 			);
 		}
 	}
+
 	// Handle POST /cancel - Cancel an invitation
 	private async handleCancelInvite(request: Request): Promise<Response> {
 		try {
@@ -470,6 +532,7 @@ export class InviteManager {
 				status: invite.status,
 				createdAt: invite.createdAt,
 				expiresAt: invite.expiresAt,
+				sessionId: invite.sessionId,
 			}),
 			{
 				headers: { 'Content-Type': 'application/json' },

@@ -16,7 +16,7 @@ This backend service uses:
 - **Game Sessions**: Manage active gameplay, turns, and timeouts
 - **Player Profiles**: Store player data, game history, and preferences
 - **Invite System**: Create and manage game invitations with unique links
-- **MegaETH Integration**: Connect with on-chain game logic on MegaETH
+- **MegaETH Integration**: Connect with onchain game logic on MegaETH
 
 ## Setup & Development
 
