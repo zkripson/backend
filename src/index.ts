@@ -27,6 +27,12 @@ import { InviteManager } from './durable_objects/InviteManager';
 // Export the Durable Object classes so Cloudflare can find them
 export { GameSession, PlayerProfile, InviteManager };
 
+// Add a global startTime for uptime tracking
+declare global {
+    var startTime: number;
+}
+globalThis.startTime = Date.now();
+
 // CORS headers to allow cross-origin requests
 const corsHeaders = {
 	'Access-Control-Allow-Origin': '*',

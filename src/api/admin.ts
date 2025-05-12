@@ -105,7 +105,8 @@ function handleMetrics(): Response {
 		operations: {} as Record<string, any>,
 		summary: {
 			timestamp: Date.now(),
-			uptime: process.hrtime ? process.hrtime.bigint() : null,
+			// Use Date.now() as a simple uptime indicator instead of process.hrtime
+			startTimestamp: globalThis.startTime || Date.now(),
 		},
 	};
 
@@ -174,7 +175,7 @@ async function handleSessionDetails(sessionId: string, env: Env): Promise<Respon
 		);
 
 		if (response.status === 200) {
-			const sessionData = await response.json();
+			const sessionData = await response.json() as Record<string, any>;
 
 			// Add admin-specific information
 			const adminSessionData = {
@@ -302,7 +303,7 @@ async function handleForceCleanup(request: Request, env: Env): Promise<Response>
 	}
 
 	try {
-		const data = await request.json();
+		const data = await request.json() as { type: 'expired_invites' | 'old_sessions' };
 		const cleanupType = data.type;
 
 		switch (cleanupType) {
