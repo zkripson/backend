@@ -3,281 +3,501 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ZK Battleship Testing Console</title>
+    <title>ZK Battleship Game Testing Interface</title>
     <style>
+        * {
+            box-sizing: border-box;
+        }
+        
         body {
             font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-            max-width: 1200px;
-            margin: 0 auto;
+            margin: 0;
             padding: 20px;
+            background-color: #f5f5f5;
             color: #333;
         }
+        
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+        
         h1, h2, h3 {
             color: #1a73e8;
+            margin-top: 0;
         }
-        .container {
-            display: flex;
+        
+        .grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
             gap: 20px;
-        }
-        .panel {
-            flex: 1;
-            border: 1px solid #ddd;
-            border-radius: 8px;
-            padding: 15px;
-            background: #f9f9f9;
-        }
-        .test-section {
             margin-bottom: 20px;
-            border-bottom: 1px solid #eee;
-            padding-bottom: 15px;
         }
-        button {
+        
+        .panel {
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        .section {
+            margin-bottom: 20px;
+            padding-bottom: 15px;
+            border-bottom: 1px solid #eee;
+        }
+        
+        .button {
             background: #1a73e8;
             color: white;
             border: none;
-            padding: 8px 16px;
+            padding: 10px 16px;
             border-radius: 4px;
             cursor: pointer;
-            margin: 5px 0;
+            font-size: 14px;
+            margin: 5px 5px 5px 0;
+            transition: background-color 0.2s;
         }
-        button:hover {
+        
+        .button:hover {
             background: #0d62c9;
         }
+        
+        .button.danger {
+            background: #dc3545;
+        }
+        
+        .button.danger:hover {
+            background: #c82333;
+        }
+        
+        .button.success {
+            background: #28a745;
+        }
+        
+        .button.success:hover {
+            background: #218838;
+        }
+        
         input, select, textarea {
             width: 100%;
-            padding: 8px;
+            padding: 8px 12px;
             margin: 5px 0;
             border: 1px solid #ddd;
             border-radius: 4px;
-            box-sizing: border-box;
+            font-size: 14px;
         }
-        #logs {
-            background: #f5f5f5;
-            border: 1px solid #ddd;
+        
+        label {
+            display: block;
+            font-weight: 500;
+            margin-bottom: 5px;
+            color: #555;
+        }
+        
+        .game-board {
+            display: grid;
+            grid-template-columns: repeat(10, 1fr);
+            gap: 2px;
+            max-width: 300px;
+            margin: 20px 0;
+        }
+        
+        .cell {
+            aspect-ratio: 1;
+            border: 1px solid #ccc;
+            background: #f0f0f0;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+            transition: background-color 0.2s;
+        }
+        
+        .cell:hover {
+            background: #e0e0e0;
+        }
+        
+        .cell.ship {
+            background: #007bff;
+            color: white;
+        }
+        
+        .cell.hit {
+            background: #dc3545;
+            color: white;
+        }
+        
+        .cell.miss {
+            background: #6c757d;
+            color: white;
+        }
+        
+        .cell.shot {
+            background: #ffc107;
+        }
+        
+        .status-panel {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
             border-radius: 4px;
-            padding: 10px;
+            padding: 15px;
+            margin: 10px 0;
+        }
+        
+        .status {
+            padding: 5px 10px;
+            border-radius: 4px;
+            font-weight: 500;
+            margin: 5px 0;
+        }
+        
+        .status.waiting {
+            background: #fff3cd;
+            color: #856404;
+            border: 1px solid #ffeaa7;
+        }
+        
+        .status.active {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        
+        .status.completed {
+            background: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+        
+        .logs {
+            background: #f5f5f5;
+            border-radius: 4px;
+            padding: 15px;
             height: 300px;
             overflow-y: auto;
             font-family: monospace;
-            font-size: 14px;
-            white-space: pre-wrap;
+            font-size: 12px;
+            border: 1px solid #ddd;
         }
+        
         .log-entry {
-            margin: 5px 0;
-            padding: 5px;
-            border-bottom: 1px solid #eee;
+            margin: 3px 0;
+            padding: 2px 0;
         }
+        
         .log-entry.error {
-            color: red;
+            color: #dc3545;
         }
+        
         .log-entry.success {
-            color: green;
+            color: #28a745;
         }
-        .tab-container {
-            margin-bottom: 20px;
+        
+        .log-entry.info {
+            color: #007bff;
         }
-        .tab-buttons {
+        
+        .timer {
+            font-size: 18px;
+            font-weight: bold;
+            padding: 10px;
+            background: #f8f9fa;
+            border-radius: 4px;
+            text-align: center;
+        }
+        
+        .timer.warning {
+            background: #fff3cd;
+            color: #856404;
+        }
+        
+        .timer.danger {
+            background: #f8d7da;
+            color: #721c24;
+        }
+        
+        .connections {
             display: flex;
-            gap: 5px;
+            gap: 10px;
             margin-bottom: 10px;
         }
-        .tab-button {
-            padding: 8px 16px;
-            background: #eee;
-            border: 1px solid #ddd;
+        
+        .connection-status {
+            padding: 5px 10px;
             border-radius: 4px;
-            cursor: pointer;
+            font-size: 12px;
+            font-weight: 500;
         }
-        .tab-button.active {
-            background: #1a73e8;
-            color: white;
-            border-color: #1a73e8;
+        
+        .connection-status.connected {
+            background: #d4edda;
+            color: #155724;
         }
-        .tab-content {
-            display: none;
+        
+        .connection-status.disconnected {
+            background: #f8d7da;
+            color: #721c24;
         }
-        .tab-content.active {
-            display: block;
+        
+        .game-info {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 10px;
+            margin: 15px 0;
+        }
+        
+        .info-card {
+            background: #f8f9fa;
+            padding: 10px;
+            border-radius: 4px;
+            border: 1px solid #dee2e6;
+        }
+        
+        .info-card h4 {
+            margin: 0 0 10px 0;
+            color: #495057;
+        }
+        
+        .ship-setup {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+            gap: 10px;
+            margin: 10px 0;
+        }
+        
+        .ship-item {
+            background: #e9ecef;
+            padding: 8px;
+            border-radius: 4px;
+            text-align: center;
+            font-size: 12px;
+        }
+        
+        .ship-item.placed {
+            background: #d4edda;
+            color: #155724;
         }
     </style>
 </head>
 <body>
-    <h1>ZK Battleship Testing Console</h1>
-    
-    <div class="tab-container">
-        <div class="tab-buttons">
-            <button class="tab-button active" onclick="showTab('setup')">Setup</button>
-            <button class="tab-button" onclick="showTab('backend')">Backend API</button>
-            <button class="tab-button" onclick="showTab('websocket')">WebSockets</button>
-            <button class="tab-button" onclick="showTab('megaeth')">MegaETH</button>
-        </div>
+    <div class="container">
+        <h1>🚢 ZK Battleship Testing Interface</h1>
         
-        <div id="setup" class="tab-content active">
+        <!-- Configuration Panel -->
+        <div class="panel">
             <h2>Configuration</h2>
-            <div class="test-section">
-                <h3>Backend API URL</h3>
+            <div class="section">
+                <label for="backendUrl">Backend URL:</label>
                 <input type="text" id="backendUrl" value="http://localhost:8787" placeholder="Backend API URL">
-                <button onclick="saveConfig()">Save Config</button>
-            </div>
-            
-            <div class="test-section">
-                <h3>Test Wallet</h3>
-                <input type="text" id="walletAddress" value="0x123456789abcdef123456789abcdef123456789a" placeholder="Wallet Address">
-                <button onclick="saveWallet()">Save Wallet</button>
+                
+                <label for="testWallet">Test Wallet Address:</label>
+                <input type="text" id="testWallet" value="0x123456789abcdef123456789abcdef123456789a" placeholder="Wallet Address">
+                
+                <button class="button" onclick="saveConfig()">Save Configuration</button>
             </div>
         </div>
         
-        <div id="backend" class="tab-content">
-            <h2>Backend API Tests</h2>
-
-            <div class="test-section">
-    <h3>Accept Invite</h3>
-    <input type="text" id="inviteCode" placeholder="Invite Code (e.g., ABC-DEF-GH)">
-    <button onclick="testAcceptInvite()">Accept Invite</button>
-</div>
-
-<div class="test-section">
-    <h3>Submit Board</h3>
-    <input type="text" id="submitBoardSessionId" placeholder="Session ID">
-    <input type="text" id="boardCommitment" placeholder="Board Commitment (leave empty for random)" value="">
-    <button onclick="testSubmitBoard()">Submit Board</button>
-</div>
-            
-            <div class="test-section">
-                <h3>Get Contract Config</h3>
-                <button onclick="testGetContractConfig()">Get Contract Config</button>
-            </div>
-            
-            <div class="test-section">
-                <h3>Create Game Session</h3>
-                <button onclick="testCreateSession()">Create Session</button>
-            </div>
-            
-            <div class="test-section">
-                <h3>Create Invite</h3>
-                <button onclick="testCreateInvite()">Create Invite</button>
-            </div>
-            <div class="test-section">
-  <h3>Check Session Details</h3>
-  <input type="text" id="checkSessionId" placeholder="Session ID">
-  <button onclick="checkSessionDetails()">Check Session</button>
-</div>
-            
-            <div class="test-section">
-                <h3>Get Session</h3>
-                <input type="text" id="sessionId" placeholder="Session ID">
-                <button onclick="testGetSession()">Get Session</button>
-            </div>
-            
-            <div class="test-section">
-                <h3>Join Session</h3>
-                <input type="text" id="joinSessionId" placeholder="Session ID">
-                <button onclick="testJoinSession()">Join Session</button>
-            </div>
-            
-            <div class="test-section">
-                <h3>Register Game Contract</h3>
-                <input type="text" id="regSessionId" placeholder="Session ID">
-                <input type="text" id="regGameId" placeholder="Game ID">
-                <input type="text" id="regContractAddress" placeholder="Contract Address">
-                <button onclick="testRegisterGame()">Register Game</button>
+        <!-- Connection Status -->
+        <div class="panel">
+            <h2>Connection Status</h2>
+            <div class="connections">
+                <div id="wsStatus" class="connection-status disconnected">WebSocket: Disconnected</div>
+                <div id="gameStatus" class="connection-status disconnected">Game: Not Started</div>
             </div>
         </div>
         
-        <div id="websocket" class="tab-content">
-            <h2>WebSocket Tests</h2>
-            
-            <div class="test-section">
-                <h3>Connect to Game Session</h3>
-                <input type="text" id="wsSessionId" placeholder="Session ID">
-                <button onclick="testConnectWebSocket()">Connect WebSocket</button>
-                <button onclick="testDisconnectWebSocket()">Disconnect</button>
+        <!-- Game Setup -->
+        <div class="grid">
+            <div class="panel">
+                <h2>Game Setup</h2>
+                
+                <div class="section">
+                    <h3>1. Create or Join Game</h3>
+                    <button class="button" onclick="createInvite()">Create New Game (Generate Invite)</button>
+                    <div style="margin: 10px 0;">
+                        <label for="inviteCode">Or Join with Invite Code:</label>
+                        <input type="text" id="inviteCode" placeholder="Enter invite code (e.g., ABC-DEF-GH)">
+                        <button class="button" onclick="acceptInvite()">Join Game</button>
+                    </div>
+                </div>
+                
+                <div class="section">
+                    <h3>2. Session Info</h3>
+                    <div class="status-panel">
+                        <div><strong>Session ID:</strong> <span id="sessionId">None</span></div>
+                        <div><strong>Players:</strong> <span id="playerList">None</span></div>
+                        <div><strong>Game Status:</strong> <span id="gameStatusText" class="status waiting">Waiting</span></div>
+                        <div><strong>Current Turn:</strong> <span id="currentTurn">None</span></div>
+                    </div>
+                </div>
+                
+                <div class="section">
+                    <h3>3. Setup Board</h3>
+                    <div class="ship-setup" id="shipSetup">
+                        <div class="ship-item">
+                            <div>Carrier</div>
+                            <div>Length: 5</div>
+                        </div>
+                        <div class="ship-item">
+                            <div>Battleship</div>
+                            <div>Length: 4</div>
+                        </div>
+                        <div class="ship-item">
+                            <div>Cruiser</div>
+                            <div>Length: 3</div>
+                        </div>
+                        <div class="ship-item">
+                            <div>Submarine</div>
+                            <div>Length: 3</div>
+                        </div>
+                        <div class="ship-item">
+                            <div>Destroyer</div>
+                            <div>Length: 2</div>
+                        </div>
+                    </div>
+                    <button class="button" onclick="randomizeShips()">Randomize Ship Placement</button>
+                    <button class="button success" onclick="submitBoard()">Submit Board</button>
+                </div>
             </div>
             
-            <div class="test-section">
-                <h3>Send WebSocket Message</h3>
-                <select id="wsMessageType">
-                    <option value="chat">Chat Message</option>
-                    <option value="ping">Ping</option>
-                    <option value="game_event">Game Event</option>
-                </select>
-                <textarea id="wsMessageContent" placeholder="Message content as JSON"></textarea>
-                <button onclick="testSendWebSocketMessage()">Send Message</button>
+            <!-- Game Board & Controls -->
+            <div class="panel">
+                <h2>Game Board</h2>
+                
+                <div class="section">
+                    <h3>Your Board</h3>
+                    <div class="game-board" id="playerBoard"></div>
+                </div>
+                
+                <div class="section">
+                    <h3>Enemy Board (Click to Shoot)</h3>
+                    <div class="game-board" id="enemyBoard"></div>
+                </div>
+                
+                <div class="section">
+                    <h3>Game Timers</h3>
+                    <div class="info-card">
+                        <h4>Turn Timer</h4>
+                        <div class="timer" id="turnTimer">60s</div>
+                    </div>
+                    <div class="info-card">
+                        <h4>Game Timer</h4>
+                        <div class="timer" id="gameTimer">10:00</div>
+                    </div>
+                </div>
             </div>
         </div>
         
-        <div id="megaeth" class="tab-content">
-            <h2>MegaETH Tests</h2>
-            
-            <div class="test-section">
-                <h3>Connect to MegaETH Realtime API</h3>
-                <input type="text" id="megaethWsUrl" placeholder="MegaETH WebSocket URL">
-                <button onclick="testConnectMegaEthWs()">Connect</button>
-                <button onclick="testDisconnectMegaEthWs()">Disconnect</button>
+        <!-- Game Information -->
+        <div class="panel">
+            <h2>Game Information</h2>
+            <div class="game-info">
+                <div class="info-card">
+                    <h4>Your Stats</h4>
+                    <div>Shots Fired: <span id="yourShots">0</span></div>
+                    <div>Hits: <span id="yourHits">0</span></div>
+                    <div>Ships Sunk: <span id="yourSunk">0</span></div>
+                    <div>Accuracy: <span id="yourAccuracy">0%</span></div>
+                </div>
+                <div class="info-card">
+                    <h4>Enemy Stats</h4>
+                    <div>Shots Received: <span id="enemyShots">0</span></div>
+                    <div>Hits Taken: <span id="enemyHits">0</span></div>
+                    <div>Your Ships Sunk: <span id="enemySunk">0</span></div>
+                </div>
+                <div class="info-card">
+                    <h4>Game Rules</h4>
+                    <div>• 60 seconds per turn</div>
+                    <div>• 10 minute maximum game</div>
+                    <div>• Winner = most ships sunk</div>
+                    <div>• Auto-forfeit on timeout</div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Game Controls -->
+        <div class="panel">
+            <h2>Game Controls</h2>
+            <div class="section">
+                <button class="button" onclick="connectWebSocket()">Connect WebSocket</button>
+                <button class="button" onclick="refreshGameState()">Refresh Game State</button>
+                <button class="button danger" onclick="forfeitGame()">Forfeit Game</button>
+                <button class="button" onclick="simulateOpponent()">Simulate Opponent Move</button>
             </div>
             
-            <div class="test-section">
-                <h3>Subscribe to Contract Events</h3>
-                <input type="text" id="contractAddress" placeholder="Contract Address">
-                <button onclick="testSubscribeToContractEvents()">Subscribe</button>
+            <div class="section">
+                <h3>Contract Interaction</h3>
+                <label for="gameId">Game ID:</label>
+                <input type="text" id="gameId" placeholder="Game ID for contract interaction">
+                
+                <label for="contractAddress">Contract Address:</label>
+                <input type="text" id="contractAddress" placeholder="Game contract address">
+                
+                <button class="button" onclick="registerContract()">Register Contract</button>
+                <button class="button" onclick="submitGameResult()">Submit Final Result</button>
             </div>
-            
-            <div class="test-section">
-                <h3>Subscribe to State Changes</h3>
-                <input type="text" id="stateAddress" placeholder="Account Address">
-                <button onclick="testSubscribeToStateChanges()">Subscribe</button>
-            </div>
-            
-            <div class="test-section">
-                <h3>Subscribe to Mini Blocks</h3>
-                <button onclick="testSubscribeToMiniBlocks()">Subscribe</button>
-            </div>
+        </div>
+        
+        <!-- Logs Panel -->
+        <div class="panel">
+            <h2>Activity Logs</h2>
+            <div class="logs" id="logs"></div>
+            <button class="button" onclick="clearLogs()">Clear Logs</button>
         </div>
     </div>
     
-    <h2>Logs</h2>
-    <div id="logs"></div>
-    
     <script>
-        // Global variables
-        let backendUrl = localStorage.getItem('backendUrl') || 'http://localhost:8787';
-        let walletAddress = localStorage.getItem('walletAddress') || '0x123456789abcdef123456789abcdef123456789a';
-        let gameWs = null;
-        let megaethWs = null;
+        // Global game state
+        let gameState = {
+            backendUrl: 'http://localhost:8787',
+            walletAddress: '0x123456789abcdef123456789abcdef123456789a',
+            sessionId: null,
+            gameId: null,
+            contractAddress: null,
+            ws: null,
+            playerBoard: Array(10).fill().map(() => Array(10).fill(0)),
+            enemyBoard: Array(10).fill().map(() => Array(10).fill(0)),
+            ships: [],
+            gameStartedAt: null,
+            turnStartedAt: null,
+            gameStatus: 'CREATED',
+            currentTurn: null,
+            players: [],
+            statistics: {
+                yourShots: 0,
+                yourHits: 0,
+                yourSunk: 0,
+                enemyShots: 0,
+                enemyHits: 0,
+                enemySunk: 0
+            }
+        };
         
-        // Initialize form values from localStorage
-        document.getElementById('backendUrl').value = backendUrl;
-        document.getElementById('walletAddress').value = walletAddress;
+        let turnTimer = null;
+        let gameTimer = null;
         
-        // Tab functionality
-        function showTab(tabId) {
-            // Hide all tabs
-            document.querySelectorAll('.tab-content').forEach(tab => {
-                tab.classList.remove('active');
-            });
-            document.querySelectorAll('.tab-button').forEach(button => {
-                button.classList.remove('active');
-            });
-            
-            // Show selected tab
-            document.getElementById(tabId).classList.add('active');
-            document.querySelector(`.tab-button[onclick="showTab('${tabId}')"]`).classList.add('active');
-        }
+        // Initialize the interface
+        window.onload = function() {
+            initializeBoards();
+            loadConfig();
+            updateDisplay();
+        };
         
-        // Logger functions
+        // Logging functions
         function log(message, type = 'info') {
-            const logsEl = document.getElementById('logs');
+            const logs = document.getElementById('logs');
             const entry = document.createElement('div');
-            entry.classList.add('log-entry', type);
+            entry.className = `log-entry ${type}`;
             
-            // Format objects/arrays as JSON
             if (typeof message === 'object') {
                 message = JSON.stringify(message, null, 2);
             }
             
             entry.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
-            logsEl.appendChild(entry);
-            logsEl.scrollTop = logsEl.scrollHeight;
+            logs.appendChild(entry);
+            logs.scrollTop = logs.scrollHeight;
         }
         
         function logError(message) {
@@ -290,511 +510,805 @@
         
         // Configuration functions
         function saveConfig() {
-            backendUrl = document.getElementById('backendUrl').value;
-            localStorage.setItem('backendUrl', backendUrl);
-            logSuccess(`Backend URL saved: ${backendUrl}`);
+            gameState.backendUrl = document.getElementById('backendUrl').value;
+            gameState.walletAddress = document.getElementById('testWallet').value;
+            localStorage.setItem('battleshipConfig', JSON.stringify({
+                backendUrl: gameState.backendUrl,
+                walletAddress: gameState.walletAddress
+            }));
+            logSuccess('Configuration saved');
         }
         
-        function saveWallet() {
-            walletAddress = document.getElementById('walletAddress').value;
-            localStorage.setItem('walletAddress', walletAddress);
-            logSuccess(`Wallet address saved: ${walletAddress}`);
-        }
-        
-        // Backend API test functions
-        async function testGetContractConfig() {
-            try {
-                log(`Fetching contract config from ${backendUrl}/api/contracts/config`);
-                const response = await fetch(`${backendUrl}/api/contracts/config`);
-                const data = await response.json();
-                logSuccess('Contract config received:');
-                log(data);
-            } catch (error) {
-                logError(`Error fetching contract config: ${error.message}`);
+        function loadConfig() {
+            const saved = localStorage.getItem('battleshipConfig');
+            if (saved) {
+                const config = JSON.parse(saved);
+                gameState.backendUrl = config.backendUrl;
+                gameState.walletAddress = config.walletAddress;
+                document.getElementById('backendUrl').value = config.backendUrl;
+                document.getElementById('testWallet').value = config.walletAddress;
             }
         }
-
-        function testSubmitBoard() {
-    const sessionId = document.getElementById('submitBoardSessionId').value || document.getElementById('wsSessionId').value;
-    let boardCommitment = document.getElementById('boardCommitment').value;
-    const walletAddress = document.getElementById('walletAddress').value;
-    
-    if (!sessionId) {
-        logError('Session ID is required');
-        return;
-    }
-    
-    // Generate a random board commitment if not provided
-    if (!boardCommitment) {
-        // Create a random 64-character hex string
-        boardCommitment = "0x" + Array.from({length: 64}, () => 
-            Math.floor(Math.random() * 16).toString(16)).join('');
-        document.getElementById('boardCommitment').value = boardCommitment;
-    }
-    
-    log(`Submitting board for session ${sessionId} with wallet ${walletAddress}`);
-    log(`Board commitment: ${boardCommitment}`);
-    
-    fetch(`${backendUrl}/api/sessions/${sessionId}/submit-board`, {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-            address: walletAddress,
-            boardCommitment: boardCommitment
-        })
-    })
-    .then(response => response.json())
-    .then(data => {
-        logSuccess('Board submitted:');
-        log(data);
         
-        // Check if all boards submitted and game started
-        if (data.allBoardsSubmitted && data.gameStatus === 'ACTIVE') {
-            logSuccess('All boards submitted! Game has started.');
-        } else if (data.gameStatus === 'SETUP') {
-            logSuccess('Game is in setup mode. Waiting for opponent to submit board.');
+        // Board initialization
+        function initializeBoards() {
+            createBoard('playerBoard', true);
+            createBoard('enemyBoard', false);
         }
-    })
-    .catch(error => {
-        logError(`Error submitting board: ${error.message}`);
-    });
-}
-
-function checkSessionDetails() {
-  const sessionId = document.getElementById('checkSessionId').value;
-  
-  if (!sessionId) {
-    logError('Session ID is required');
-    return;
-  }
-  
-  log(`Checking session details for ${sessionId}...`);
-  
-  fetch(`${backendUrl}/api/sessions/${sessionId}`, {
-    method: 'GET',
-    headers: {
-      'Content-Type': 'application/json'
-    }
-  })
-  .then(response => response.json())
-  .then(data => {
-    logSuccess('Session details:');
-    log(data);
-    
-    // Highlight important info
-    if (data.players && data.players.length > 0) {
-      logSuccess(`Players in session: ${data.players.join(', ')}`);
-    } else {
-      logError('No players registered in this session!');
-    }
-    
-    logSuccess(`Game status: ${data.status}`);
-  })
-  .catch(error => {
-    logError(`Error checking session: ${error.message}`);
-  });
-}
         
-function testAcceptInvite() {
-    const inviteCode = document.getElementById('inviteCode').value;
-    const walletAddress = document.getElementById('walletAddress').value;
-    
-    if (!inviteCode) {
-        logError('Invite code is required');
-        return;
-    }
-    
-    log(`Accepting invite ${inviteCode} with wallet ${walletAddress}`);
-    
-    fetch(`${backendUrl}/api/invites/accept`, {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-            code: inviteCode,
-            player: walletAddress
-        })
-    })
-    .then(response => response.json())
-    .then(data => {
-        logSuccess('Invite accepted:');
-        log(data);
-        
-        // Auto-fill session ID if available
-        if (data.sessionId) {
-            document.getElementById('sessionId').value = data.sessionId;
-            document.getElementById('wsSessionId').value = data.sessionId;
+        function createBoard(containerId, isPlayerBoard) {
+            const container = document.getElementById(containerId);
+            container.innerHTML = '';
+            
+            for (let y = 0; y < 10; y++) {
+                for (let x = 0; x < 10; x++) {
+                    const cell = document.createElement('div');
+                    cell.className = 'cell';
+                    cell.dataset.x = x;
+                    cell.dataset.y = y;
+                    
+                    if (!isPlayerBoard) {
+                        cell.onclick = () => makeShot(x, y);
+                    }
+                    
+                    container.appendChild(cell);
+                }
+            }
         }
-    })
-    .catch(error => {
-        logError(`Error accepting invite: ${error.message}`);
-    });
-}
         
-        async function testCreateSession() {
+        // Game flow functions
+        async function createInvite() {
             try {
-                log(`Creating session with wallet ${walletAddress}`);
-                const response = await fetch(`${backendUrl}/api/sessions/create`, {
+                log('Creating new game invite...');
+                const response = await fetch(`${gameState.backendUrl}/api/invites/create`, {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
+                    headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
-                        creator: walletAddress
+                        creator: gameState.walletAddress,
+                        expirationHours: 24
                     })
                 });
-                const data = await response.json();
-                logSuccess('Session created:');
-                log(data);
                 
-                // Auto-fill session ID fields
-                if (data.sessionId) {
-                    document.getElementById('sessionId').value = data.sessionId;
-                    document.getElementById('joinSessionId').value = data.sessionId;
-                    document.getElementById('wsSessionId').value = data.sessionId;
-                    document.getElementById('regSessionId').value = data.sessionId;
+                const data = await response.json();
+                if (data.code) {
+                    logSuccess(`Game invite created: ${data.code}`);
+                    document.getElementById('inviteCode').value = data.code;
+                    
+                    if (data.sessionId) {
+                        gameState.sessionId = data.sessionId;
+                        updateDisplay();
+                        connectWebSocket();
+                    }
+                } else {
+                    logError('Failed to create invite');
                 }
             } catch (error) {
-                logError(`Error creating session: ${error.message}`);
+                logError(`Error creating invite: ${error.message}`);
             }
         }
         
-        async function testCreateInvite() {
-    const walletAddress = document.getElementById('walletAddress').value;
-    const sessionId = document.getElementById('sessionId').value;
-    
-    log(`Creating invite with wallet ${walletAddress}${sessionId ? ` linked to session ${sessionId}` : ''}`);
-    
-    fetch(`${backendUrl}/api/invites/create`, {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-            creator: walletAddress,
-            sessionId: sessionId || null
-        })
-    })
-    .then(response => response.json())
-    .then(data => {
-        logSuccess('Invite created:');
-        log(data);
-        // Auto-fill invite code if there's an accept field
-        const inviteCodeField = document.getElementById('inviteCode');
-        if (inviteCodeField && data.code) {
-            inviteCodeField.value = data.code;
-        }
-    })
-    .catch(error => {
-        logError(`Error creating invite: ${error.message}`);
-    });
-}
-        
-        async function testGetSession() {
-            const sessionId = document.getElementById('sessionId').value;
-            if (!sessionId) {
-                logError('Session ID is required');
+        async function acceptInvite() {
+            const inviteCode = document.getElementById('inviteCode').value;
+            if (!inviteCode) {
+                logError('Please enter an invite code');
                 return;
             }
             
             try {
-                log(`Fetching session ${sessionId}`);
-                const response = await fetch(`${backendUrl}/api/sessions/${sessionId}`);
-                const data = await response.json();
-                logSuccess('Session data received:');
-                log(data);
-            } catch (error) {
-                logError(`Error fetching session: ${error.message}`);
-            }
-        }
-        
-        async function testJoinSession() {
-            const sessionId = document.getElementById('joinSessionId').value;
-            if (!sessionId) {
-                logError('Session ID is required');
-                return;
-            }
-            
-            try {
-                log(`Joining session ${sessionId} with wallet ${walletAddress}`);
-                const response = await fetch(`${backendUrl}/api/sessions/${sessionId}/join`, {
+                log(`Accepting invite: ${inviteCode}`);
+                const response = await fetch(`${gameState.backendUrl}/api/invites/accept`, {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
+                    headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
-                        address: walletAddress
+                        code: inviteCode,
+                        player: gameState.walletAddress
                     })
                 });
+                
                 const data = await response.json();
-                logSuccess('Joined session:');
-                log(data);
+                if (data.success && data.sessionId) {
+                    logSuccess('Successfully joined game');
+                    gameState.sessionId = data.sessionId;
+                    updateDisplay();
+                    connectWebSocket();
+                } else {
+                    logError('Failed to accept invite');
+                }
             } catch (error) {
-                logError(`Error joining session: ${error.message}`);
+                logError(`Error accepting invite: ${error.message}`);
             }
         }
         
-        async function testRegisterGame() {
-            const sessionId = document.getElementById('regSessionId').value;
-            const gameId = document.getElementById('regGameId').value;
-            const contractAddress = document.getElementById('regContractAddress').value;
+        async function connectWebSocket() {
+            if (!gameState.sessionId) {
+                logError('No active session');
+                return;
+            }
             
-            if (!sessionId || !gameId || !contractAddress) {
+            if (gameState.ws) {
+                gameState.ws.close();
+            }
+            
+            const wsUrl = `${gameState.backendUrl.replace('http', 'ws')}/api/game-updates?sessionId=${gameState.sessionId}&address=${gameState.walletAddress}`;
+            log(`Connecting to WebSocket: ${wsUrl}`);
+            
+            gameState.ws = new WebSocket(wsUrl);
+            
+            gameState.ws.onopen = () => {
+                logSuccess('WebSocket connected');
+                updateConnectionStatus();
+            };
+            
+            gameState.ws.onmessage = (event) => {
+                try {
+                    const message = JSON.parse(event.data);
+                    handleWebSocketMessage(message);
+                } catch (error) {
+                    log(`Raw message: ${event.data}`);
+                }
+            };
+            
+            gameState.ws.onerror = (error) => {
+                logError('WebSocket error');
+                updateConnectionStatus();
+            };
+            
+            gameState.ws.onclose = () => {
+                log('WebSocket disconnected');
+                updateConnectionStatus();
+            };
+        }
+        
+        function handleWebSocketMessage(message) {
+            log(`WebSocket message: ${message.type}`, 'info');
+            
+            switch (message.type) {
+                case 'session_state':
+                    updateGameState(message.data);
+                    break;
+                    
+                case 'player_joined':
+                    logSuccess(`Player joined: ${message.address}`);
+                    gameState.players = message.players;
+                    updateDisplay();
+                    break;
+                    
+                case 'board_submitted':
+                    logSuccess(`${message.player} submitted their board`);
+                    updateGameState({ status: message.gameStatus });
+                    break;
+                    
+                case 'game_started':
+                    logSuccess('Game started!');
+                    gameState.gameStatus = 'ACTIVE';
+                    gameState.currentTurn = message.currentTurn;
+                    gameState.gameStartedAt = message.gameStartedAt;
+                    gameState.turnStartedAt = message.turnStartedAt;
+                    startTimers();
+                    updateDisplay();
+                    break;
+                    
+                case 'shot_fired':
+                    handleShotFired(message);
+                    break;
+                    
+                case 'ship_sunk':
+                    logSuccess(`Ship sunk by ${message.player}!`);
+                    gameState.statistics.yourSunk = message.sunkShips[gameState.walletAddress] || 0;
+                    updateDisplay();
+                    break;
+                    
+                case 'game_over':
+                    handleGameOver(message);
+                    break;
+                    
+                case 'chat':
+                    log(`${message.sender}: ${message.text}`, 'info');
+                    break;
+            }
+        }
+        
+        function updateGameState(data) {
+            if (data.sessionId) gameState.sessionId = data.sessionId;
+            if (data.status) gameState.gameStatus = data.status;
+            if (data.players) gameState.players = data.players;
+            if (data.currentTurn) gameState.currentTurn = data.currentTurn;
+            if (data.gameStartedAt) gameState.gameStartedAt = data.gameStartedAt;
+            if (data.turnStartedAt) gameState.turnStartedAt = data.turnStartedAt;
+            if (data.shots) {
+                // Update statistics based on shots
+                updateStatistics(data.shots);
+            }
+            if (data.sunkShips) {
+                gameState.statistics.yourSunk = data.sunkShips[gameState.walletAddress] || 0;
+                gameState.statistics.enemySunk = data.sunkShips[getOpponentAddress()] || 0;
+            }
+            
+            updateDisplay();
+            if (gameState.gameStatus === 'ACTIVE' && gameState.gameStartedAt) {
+                startTimers();
+            }
+        }
+        
+        // Ship placement
+        function randomizeShips() {
+            // Generate random ship placements
+            gameState.ships = generateRandomShipPlacement();
+            displayShipsOnBoard();
+            markShipsAsPlaced();
+            logSuccess('Ships randomized');
+        }
+        
+     function generateRandomShipPlacement() {
+    const ships = [];
+    const shipLengths = [5, 4, 3, 3, 2];
+    const shipNames = ['Carrier', 'Battleship', 'Cruiser', 'Submarine', 'Destroyer'];
+    
+    // Reset board
+    gameState.playerBoard = Array(10).fill().map(() => Array(10).fill(0));
+    
+    for (let i = 0; i < shipLengths.length; i++) {
+        let placed = false;
+        let attempts = 0;
+        
+        while (!placed && attempts < 1000) {
+            const isHorizontal = Math.random() > 0.5;
+            const startX = Math.floor(Math.random() * (10 - (isHorizontal ? shipLengths[i] : 1)));
+            const startY = Math.floor(Math.random() * (10 - (isHorizontal ? 1 : shipLengths[i])));
+            
+            const cells = [];
+            for (let j = 0; j < shipLengths[i]; j++) {
+                if (isHorizontal) {
+                    cells.push({ x: startX + j, y: startY });
+                } else {
+                    cells.push({ x: startX, y: startY + j });
+                }
+            }
+            
+            if (canPlaceShip(cells)) {
+                // Mark cells as occupied
+                cells.forEach(cell => {
+                    gameState.playerBoard[cell.y][cell.x] = i + 1;
+                });
+                
+                ships.push({
+                    id: `ship-${i}`,
+                    name: shipNames[i],
+                    length: shipLengths[i],
+                    cells: cells
+                });
+                placed = true;
+            }
+            attempts++;
+        }
+        
+        if (!placed) {
+            throw new Error(`Failed to place ship ${shipNames[i]} after ${attempts} attempts`);
+        }
+    }
+    
+    return ships;
+}
+        
+       function canPlaceShip(cells) {
+    for (const cell of cells) {
+        // Check if the cell is already occupied
+        if (gameState.playerBoard[cell.y][cell.x] !== 0) {
+            return false;
+        }
+        
+        // For battleship rules, ships shouldn't touch even diagonally
+        for (let dx = -1; dx <= 1; dx++) {
+            for (let dy = -1; dy <= 1; dy++) {
+                const adjX = cell.x + dx;
+                const adjY = cell.y + dy;
+                if (adjX >= 0 && adjX < 10 && adjY >= 0 && adjY < 10) {
+                    if (gameState.playerBoard[adjY][adjX] !== 0) {
+                        return false;
+                    }
+                }
+            }
+        }
+    }
+    return true;
+}
+        
+        function displayShipsOnBoard() {
+            // Reset board
+            gameState.playerBoard = Array(10).fill().map(() => Array(10).fill(0));
+            
+            // Place ships
+            gameState.ships.forEach((ship, index) => {
+                ship.cells.forEach(cell => {
+                    gameState.playerBoard[cell.y][cell.x] = index + 1;
+                });
+            });
+            
+            // Update visual board
+            const boardCells = document.querySelectorAll('#playerBoard .cell');
+            boardCells.forEach((cell, i) => {
+                const x = i % 10;
+                const y = Math.floor(i / 10);
+                const cellValue = gameState.playerBoard[y][x];
+                
+                cell.className = 'cell';
+                if (cellValue > 0) {
+                    cell.classList.add('ship');
+                    cell.textContent = cellValue;
+                }
+            });
+        }
+        
+        function markShipsAsPlaced() {
+            const shipItems = document.querySelectorAll('.ship-item');
+            shipItems.forEach(item => item.classList.add('placed'));
+        }
+        
+        async function submitBoard() {
+            if (gameState.ships.length === 0) {
+                logError('Please place your ships first');
+                return;
+            }
+            
+            if (!gameState.sessionId) {
+                logError('No active session');
+                return;
+            }
+            
+            try {
+                // Generate board commitment (simplified)
+                const boardCommitment = generateBoardCommitment();
+                
+                log('Submitting board...');
+                const response = await fetch(`${gameState.backendUrl}/api/sessions/${gameState.sessionId}/submit-board`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        address: gameState.walletAddress,
+                        boardCommitment: boardCommitment,
+                        ships: gameState.ships
+                    })
+                });
+                
+                const data = await response.json();
+                if (data.success) {
+                    logSuccess('Board submitted successfully');
+                    if (data.allBoardsSubmitted) {
+                        logSuccess('All boards submitted! Game is starting...');
+                    }
+                } else {
+                    logError('Failed to submit board');
+                }
+            } catch (error) {
+                logError(`Error submitting board: ${error.message}`);
+            }
+        }
+        
+        function generateBoardCommitment() {
+            // Generate a simple hash of the board state
+            const boardString = JSON.stringify(gameState.ships);
+            const salt = Math.random().toString(36).substr(2, 9);
+            return '0x' + btoa(boardString + salt).replace(/[^a-f0-9]/gi, '').substr(0, 64);
+        }
+        
+        // Gameplay functions
+        async function makeShot(x, y) {
+            if (gameState.gameStatus !== 'ACTIVE') {
+                logError('Game is not active');
+                return;
+            }
+            
+            if (gameState.currentTurn !== gameState.walletAddress) {
+                logError('Not your turn');
+                return;
+            }
+            
+            if (gameState.enemyBoard[y][x] !== 0) {
+                logError('Already shot at this position');
+                return;
+            }
+            
+            try {
+                log(`Making shot at (${x}, ${y})`);
+                const response = await fetch(`${gameState.backendUrl}/api/sessions/${gameState.sessionId}/make-shot`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        address: gameState.walletAddress,
+                        x: x,
+                        y: y
+                    })
+                });
+                
+                const data = await response.json();
+                if (data.success) {
+                    // Update board visually
+                    const cellIndex = y * 10 + x;
+                    const cell = document.querySelectorAll('#enemyBoard .cell')[cellIndex];
+                    
+                    if (data.isHit) {
+                        cell.classList.add('hit');
+                        cell.textContent = 'H';
+                        gameState.enemyBoard[y][x] = 2; // hit
+                        gameState.statistics.yourHits++;
+                    } else {
+                        cell.classList.add('miss');
+                        cell.textContent = 'M';
+                        gameState.enemyBoard[y][x] = 1; // miss
+                    }
+                    
+                    gameState.statistics.yourShots++;
+                    updateDisplay();
+                    logSuccess(`Shot ${data.isHit ? 'hit' : 'missed'}!`);
+                } else {
+                    logError('Shot failed');
+                }
+            } catch (error) {
+                logError(`Error making shot: ${error.message}`);
+            }
+        }
+        
+        function handleShotFired(message) {
+            log(`Shot fired at (${message.x}, ${message.y}) by ${message.player}`);
+            
+            // Update turn information
+            gameState.currentTurn = message.nextTurn;
+            gameState.turnStartedAt = message.turnStartedAt;
+            
+            // Update enemy board if it was our opponent who shot
+            if (message.player !== gameState.walletAddress) {
+                const cellIndex = message.y * 10 + message.x;
+                const cell = document.querySelectorAll('#playerBoard .cell')[cellIndex];
+                cell.classList.add('shot');
+                
+                if (message.isHit) {
+                    cell.classList.add('hit');
+                    gameState.statistics.enemyHits++;
+                } else {
+                    cell.classList.add('miss');
+                }
+                gameState.statistics.enemyShots++;
+            }
+            
+            updateDisplay();
+            resetTurnTimer();
+        }
+        
+        function handleGameOver(message) {
+            clearTimers();
+            gameState.gameStatus = 'COMPLETED';
+            
+            const isWinner = message.winner === gameState.walletAddress;
+            if (isWinner) {
+                logSuccess(`🎉 You won the game! Reason: ${message.reason}`);
+            } else {
+                log(`💔 You lost the game. Winner: ${message.winner}. Reason: ${message.reason}`, 'error');
+            }
+            
+            updateDisplay();
+        }
+        
+        // Timer functions
+        function startTimers() {
+            clearTimers();
+            resetTurnTimer();
+            resetGameTimer();
+        }
+        
+        function resetTurnTimer() {
+            if (turnTimer) clearInterval(turnTimer);
+            
+            if (gameState.gameStatus === 'ACTIVE' && gameState.turnStartedAt) {
+                const updateTurnTimer = () => {
+                    const elapsed = Date.now() - gameState.turnStartedAt;
+                    const remaining = Math.max(0, 60000 - elapsed);
+                    const seconds = Math.ceil(remaining / 1000);
+                    
+                    const timerEl = document.getElementById('turnTimer');
+                    timerEl.textContent = `${seconds}s`;
+                    
+                    if (seconds <= 10) {
+                        timerEl.className = 'timer danger';
+                    } else if (seconds <= 30) {
+                        timerEl.className = 'timer warning';
+                    } else {
+                        timerEl.className = 'timer';
+                    }
+                    
+                    if (remaining <= 0) {
+                        clearInterval(turnTimer);
+                        logError('Turn timeout!');
+                    }
+                };
+                
+                updateTurnTimer();
+                turnTimer = setInterval(updateTurnTimer, 1000);
+            }
+        }
+        
+        function resetGameTimer() {
+            if (gameTimer) clearInterval(gameTimer);
+            
+            if (gameState.gameStatus === 'ACTIVE' && gameState.gameStartedAt) {
+                const updateGameTimer = () => {
+                    const elapsed = Date.now() - gameState.gameStartedAt;
+                    const remaining = Math.max(0, 600000 - elapsed); // 10 minutes
+                    const minutes = Math.floor(remaining / 60000);
+                    const seconds = Math.floor((remaining % 60000) / 1000);
+                    
+                    const timerEl = document.getElementById('gameTimer');
+                    timerEl.textContent = `${minutes}:${seconds.toString().padStart(2, '0')}`;
+                    
+                    if (remaining <= 60000) {
+                        timerEl.className = 'timer danger';
+                    } else if (remaining <= 180000) {
+                        timerEl.className = 'timer warning';
+                    } else {
+                        timerEl.className = 'timer';
+                    }
+                    
+                    if (remaining <= 0) {
+                        clearInterval(gameTimer);
+                        logError('Game timeout!');
+                    }
+                };
+                
+                updateGameTimer();
+                gameTimer = setInterval(updateGameTimer, 1000);
+            }
+        }
+        
+        function clearTimers() {
+            if (turnTimer) {
+                clearInterval(turnTimer);
+                turnTimer = null;
+            }
+            if (gameTimer) {
+                clearInterval(gameTimer);
+                gameTimer = null;
+            }
+        }
+        
+        // Helper functions
+        function updateDisplay() {
+            document.getElementById('sessionId').textContent = gameState.sessionId || 'None';
+            document.getElementById('playerList').textContent = gameState.players.join(', ') || 'None';
+            
+            const statusEl = document.getElementById('gameStatusText');
+            statusEl.textContent = gameState.gameStatus;
+            statusEl.className = `status ${gameState.gameStatus.toLowerCase()}`;
+            
+            document.getElementById('currentTurn').textContent = gameState.currentTurn || 'None';
+            
+            // Update statistics
+            document.getElementById('yourShots').textContent = gameState.statistics.yourShots;
+            document.getElementById('yourHits').textContent = gameState.statistics.yourHits;
+            document.getElementById('yourSunk').textContent = gameState.statistics.yourSunk;
+            document.getElementById('yourAccuracy').textContent = 
+                gameState.statistics.yourShots > 0 ? 
+                Math.round((gameState.statistics.yourHits / gameState.statistics.yourShots) * 100) + '%' : '0%';
+            
+            document.getElementById('enemyShots').textContent = gameState.statistics.enemyShots;
+            document.getElementById('enemyHits').textContent = gameState.statistics.enemyHits;
+            document.getElementById('enemySunk').textContent = gameState.statistics.enemySunk;
+            
+            updateConnectionStatus();
+        }
+        
+        function updateConnectionStatus() {
+            const wsStatus = document.getElementById('wsStatus');
+            const gameStatus = document.getElementById('gameStatus');
+            
+            if (gameState.ws && gameState.ws.readyState === WebSocket.OPEN) {
+                wsStatus.textContent = 'WebSocket: Connected';
+                wsStatus.className = 'connection-status connected';
+            } else {
+                wsStatus.textContent = 'WebSocket: Disconnected';
+                wsStatus.className = 'connection-status disconnected';
+            }
+            
+            if (gameState.sessionId && gameState.gameStatus !== 'CREATED') {
+                gameStatus.textContent = `Game: ${gameState.gameStatus}`;
+                gameStatus.className = 'connection-status connected';
+            } else {
+                gameStatus.textContent = 'Game: Not Started';
+                gameStatus.className = 'connection-status disconnected';
+            }
+        }
+        
+        function getOpponentAddress() {
+            return gameState.players.find(player => player !== gameState.walletAddress);
+        }
+        
+        function updateStatistics(shots) {
+            gameState.statistics.yourShots = shots.filter(shot => shot.player === gameState.walletAddress).length;
+            gameState.statistics.yourHits = shots.filter(shot => shot.player === gameState.walletAddress && shot.isHit).length;
+            gameState.statistics.enemyShots = shots.filter(shot => shot.player !== gameState.walletAddress).length;
+            gameState.statistics.enemyHits = shots.filter(shot => shot.player !== gameState.walletAddress && shot.isHit).length;
+        }
+        
+        // Additional functions
+        async function refreshGameState() {
+            if (!gameState.sessionId) {
+                logError('No active session');
+                return;
+            }
+            
+            try {
+                const response = await fetch(`${gameState.backendUrl}/api/sessions/${gameState.sessionId}`);
+                const data = await response.json();
+                updateGameState(data);
+                logSuccess('Game state refreshed');
+            } catch (error) {
+                logError(`Error refreshing game state: ${error.message}`);
+            }
+        }
+        
+        async function forfeitGame() {
+            if (!gameState.sessionId) {
+                logError('No active session');
+                return;
+            }
+            
+            if (confirm('Are you sure you want to forfeit this game?')) {
+                try {
+                    const response = await fetch(`${gameState.backendUrl}/api/sessions/${gameState.sessionId}/forfeit`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            address: gameState.walletAddress
+                        })
+                    });
+                    
+                    const data = await response.json();
+                    if (data.success) {
+                        logSuccess('Game forfeited');
+                    } else {
+                        logError('Failed to forfeit game');
+                    }
+                } catch (error) {
+                    logError(`Error forfeiting game: ${error.message}`);
+                }
+            }
+        }
+        
+        // Simulate opponent move for testing
+        async function simulateOpponent() {
+            if (gameState.gameStatus !== 'ACTIVE') {
+                logError('Game is not active');
+                return;
+            }
+            
+            // Create a simulated opponent wallet
+            const opponentWallet = getOpponentAddress();
+            if (!opponentWallet) {
+                logError('No opponent found');
+                return;
+            }
+            
+            // Find a random empty cell on player's board
+            const emptyCells = [];
+            for (let y = 0; y < 10; y++) {
+                for (let x = 0; x < 10; x++) {
+                    const cell = document.querySelectorAll('#playerBoard .cell')[y * 10 + x];
+                    if (!cell.classList.contains('shot')) {
+                        emptyCells.push({ x, y });
+                    }
+                }
+            }
+            
+            if (emptyCells.length === 0) {
+                logError('No valid cells for opponent to shoot');
+                return;
+            }
+            
+            const randomCell = emptyCells[Math.floor(Math.random() * emptyCells.length)];
+            
+            try {
+                // Make the shot as the opponent
+                const response = await fetch(`${gameState.backendUrl}/api/sessions/${gameState.sessionId}/make-shot`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        address: opponentWallet,
+                        x: randomCell.x,
+                        y: randomCell.y
+                    })
+                });
+                
+                const data = await response.json();
+                if (data.success) {
+                    logSuccess(`Opponent made a shot at (${randomCell.x}, ${randomCell.y})`);
+                } else {
+                    logError('Opponent shot failed');
+                }
+            } catch (error) {
+                logError(`Error simulating opponent move: ${error.message}`);
+            }
+        }
+        
+        // Contract interaction functions
+        async function registerContract() {
+            const gameId = document.getElementById('gameId').value;
+            const contractAddress = document.getElementById('contractAddress').value;
+            
+            if (!gameState.sessionId || !gameId || !contractAddress) {
                 logError('Session ID, Game ID, and Contract Address are required');
                 return;
             }
             
             try {
-                log(`Registering game contract for session ${sessionId}`);
-                const response = await fetch(`${backendUrl}/api/contracts/register-game`, {
+                const response = await fetch(`${gameState.backendUrl}/api/contracts/register-game`, {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
+                    headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
-                        sessionId,
-                        gameId,
+                        sessionId: gameState.sessionId,
+                        gameId: gameId,
                         gameContractAddress: contractAddress
                     })
                 });
+                
                 const data = await response.json();
-                logSuccess('Game contract registered:');
-                log(data);
-            } catch (error) {
-                logError(`Error registering game contract: ${error.message}`);
-            }
-        }
-        
-        // WebSocket test functions
-        function testConnectWebSocket() {
-            const sessionId = document.getElementById('wsSessionId').value;
-            if (!sessionId) {
-                logError('Session ID is required');
-                return;
-            }
-            
-            // Close existing connection if any
-            if (gameWs) {
-                gameWs.close();
-                gameWs = null;
-            }
-            
-            // Create new WebSocket connection
-            const wsUrl = `${backendUrl.replace('http', 'ws')}/api/game-updates?sessionId=${sessionId}&address=${walletAddress}`;
-            log(`Connecting to WebSocket: ${wsUrl}`);
-            
-            gameWs = new WebSocket(wsUrl);
-            
-            gameWs.onopen = () => {
-                logSuccess('WebSocket connection established');
-            };
-            
-            gameWs.onmessage = (event) => {
-                try {
-                    const data = JSON.parse(event.data);
-                    log('WebSocket message received:');
-                    log(data);
-                } catch (error) {
-                    log(`Raw WebSocket message: ${event.data}`);
+                if (data.success) {
+                    gameState.gameId = gameId;
+                    gameState.contractAddress = contractAddress;
+                    logSuccess('Contract registered successfully');
+                } else {
+                    logError('Failed to register contract');
                 }
-            };
-            
-            gameWs.onerror = (error) => {
-                logError(`WebSocket error: ${error.message || 'Unknown error'}`);
-            };
-            
-            gameWs.onclose = () => {
-                log('WebSocket connection closed');
-            };
-        }
-        
-        function testDisconnectWebSocket() {
-            if (gameWs) {
-                gameWs.close();
-                gameWs = null;
-                log('WebSocket disconnected');
-            } else {
-                logError('No active WebSocket connection');
+            } catch (error) {
+                logError(`Error registering contract: ${error.message}`);
             }
         }
         
-        function testSendWebSocketMessage() {
-            if (!gameWs || gameWs.readyState !== WebSocket.OPEN) {
-                logError('No active WebSocket connection');
+        async function submitGameResult() {
+            if (!gameState.gameId || !gameState.contractAddress) {
+                logError('Contract must be registered first');
                 return;
             }
-            
-            const messageType = document.getElementById('wsMessageType').value;
-            let messageContent = document.getElementById('wsMessageContent').value;
             
             try {
-                // If content is provided, parse it as JSON
-                if (messageContent) {
-                    messageContent = JSON.parse(messageContent);
-                } else {
-                    // Default content based on message type
-                    switch (messageType) {
-                        case 'chat':
-                            messageContent = { text: 'Hello from testing console!' };
-                            break;
-                        case 'ping':
-                            messageContent = {};
-                            break;
-                        case 'game_event':
-                            messageContent = {
-                                event: {
-                                    name: 'ShotFired',
-                                    player: walletAddress,
-                                    x: 5,
-                                    y: 7,
-                                    gameId: document.getElementById('regGameId').value || '123'
-                                }
-                            };
-                            break;
+                const gameData = {
+                    sessionId: gameState.sessionId,
+                    player1: gameState.players[0],
+                    player2: gameState.players[1],
+                    winner: gameState.winner,
+                    reason: 'completed',
+                    totalShots: gameState.statistics.yourShots + gameState.statistics.enemyShots,
+                    sunkShips: {
+                        [gameState.walletAddress]: gameState.statistics.yourSunk,
+                        [getOpponentAddress()]: gameState.statistics.enemySunk
                     }
-                }
-                
-                const message = {
-                    type: messageType,
-                    ...messageContent
                 };
                 
-                log(`Sending WebSocket message:`);
-                log(message);
-                gameWs.send(JSON.stringify(message));
-            } catch (error) {
-                logError(`Error sending WebSocket message: ${error.message}`);
-            }
-        }
-        
-        // MegaETH test functions
-        function testConnectMegaEthWs() {
-            const wsUrl = document.getElementById('megaethWsUrl').value;
-            if (!wsUrl) {
-                logError('MegaETH WebSocket URL is required');
-                return;
-            }
-            
-            // Close existing connection if any
-            if (megaethWs) {
-                megaethWs.close();
-                megaethWs = null;
-            }
-            
-            // Create new WebSocket connection
-            log(`Connecting to MegaETH WebSocket: ${wsUrl}`);
-            
-            megaethWs = new WebSocket(wsUrl);
-            
-            megaethWs.onopen = () => {
-                logSuccess('MegaETH WebSocket connection established');
-            };
-            
-            megaethWs.onmessage = (event) => {
-                try {
-                    const data = JSON.parse(event.data);
-                    log('MegaETH WebSocket message received:');
-                    log(data);
-                } catch (error) {
-                    log(`Raw MegaETH message: ${event.data}`);
+                const response = await fetch(`${gameState.backendUrl}/api/contracts/submit-result`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(gameData)
+                });
+                
+                const data = await response.json();
+                if (data.success) {
+                    logSuccess('Game result submitted to contract');
+                } else {
+                    logError('Failed to submit game result');
                 }
-            };
-            
-            megaethWs.onerror = (error) => {
-                logError(`MegaETH WebSocket error: ${error.message || 'Unknown error'}`);
-            };
-            
-            megaethWs.onclose = () => {
-                log('MegaETH WebSocket connection closed');
-            };
-        }
-        
-        function testDisconnectMegaEthWs() {
-            if (megaethWs) {
-                megaethWs.close();
-                megaethWs = null;
-                log('MegaETH WebSocket disconnected');
-            } else {
-                logError('No active MegaETH WebSocket connection');
+            } catch (error) {
+                logError(`Error submitting game result: ${error.message}`);
             }
         }
         
-        function testSubscribeToContractEvents() {
-            if (!megaethWs || megaethWs.readyState !== WebSocket.OPEN) {
-                logError('No active MegaETH WebSocket connection');
-                return;
-            }
-            
-            const contractAddress = document.getElementById('contractAddress').value;
-            if (!contractAddress) {
-                logError('Contract address is required');
-                return;
-            }
-            
-            // ShotFired, ShotResult, and GameCompleted event signatures
-            const eventTopics = [
-                "0x3a9e47588c8175a500eec33e983974e93aec6c02d5ac9985b9e88e27e7a9b3cb",
-                "0x9c5f5af1ca785633358f1aa606d964c927558ce3ce5e9e2e270c66c8a65fecd9",
-                "0xf168bbf52af41088f8a709042ec88261e309c3c9e7c0f7b66773c27c5da78c57"
-            ];
-            
-            const subscribeRequest = {
-                method: 'eth_subscribe',
-                params: [
-                    'logs',
-                    {
-                        address: contractAddress,
-                        topics: [eventTopics],
-                        fromBlock: "pending",
-                        toBlock: "pending"
-                    }
-                ],
-                id: 1
-            };
-            
-            log(`Subscribing to contract events:`);
-            log(subscribeRequest);
-            megaethWs.send(JSON.stringify(subscribeRequest));
+        function clearLogs() {
+            document.getElementById('logs').innerHTML = '';
         }
         
-        function testSubscribeToStateChanges() {
-            if (!megaethWs || megaethWs.readyState !== WebSocket.OPEN) {
-                logError('No active MegaETH WebSocket connection');
-                return;
+        // Initialize on load
+        window.addEventListener('beforeunload', () => {
+            if (gameState.ws) {
+                gameState.ws.close();
             }
-            
-            const address = document.getElementById('stateAddress').value || walletAddress;
-            
-            const subscribeRequest = {
-                method: 'eth_subscribe',
-                params: ['stateChange', [address]],
-                id: 1
-            };
-            
-            log(`Subscribing to state changes for ${address}:`);
-            log(subscribeRequest);
-            megaethWs.send(JSON.stringify(subscribeRequest));
-        }
-        
-        function testSubscribeToMiniBlocks() {
-            if (!megaethWs || megaethWs.readyState !== WebSocket.OPEN) {
-                logError('No active MegaETH WebSocket connection');
-                return;
-            }
-            
-            const subscribeRequest = {
-                method: 'eth_subscribe',
-                params: ['fragment'],
-                id: 1
-            };
-            
-            log(`Subscribing to mini blocks:`);
-            log(subscribeRequest);
-            megaethWs.send(JSON.stringify(subscribeRequest));
-        }
+            clearTimers();
+        });
     </script>
 </body>
 </html>

@@ -193,7 +193,7 @@ export class GameSession {
 	// Initialize a new game session
 	private async handleInitializeRequest(request: Request): Promise<Response> {
 		try {
-			const data = await request.json() as { sessionId: string; creator: string };
+			const data = (await request.json()) as { sessionId: string; creator: string };
 
 			if (!data.sessionId || !data.creator) {
 				return new Response(JSON.stringify({ error: 'Session ID and creator address are required' }), {
@@ -243,7 +243,7 @@ export class GameSession {
 						);
 					}
 
-					const data = await request.json() as JoinRequest;
+					const data = (await request.json()) as JoinRequest;
 					const playerAddress = data.address;
 
 					if (!playerAddress) {
@@ -284,7 +284,7 @@ export class GameSession {
 	// Register game contract (still needed for final result submission)
 	private async handleRegisterContract(request: Request): Promise<Response> {
 		try {
-			const data = await request.json() as StartRequest;
+			const data = (await request.json()) as StartRequest;
 
 			if (!data.gameId || !data.gameContractAddress) {
 				throw ErrorHandler.createError(
@@ -327,7 +327,7 @@ export class GameSession {
 				try {
 					GameValidator.validateGameState(this.sessionId, this.status, ['WAITING', 'SETUP', 'ACTIVE']);
 
-					const data = await request.json() as SubmitBoardRequest & { ships: Ship[] };
+					const data = (await request.json()) as SubmitBoardRequest & { ships: Ship[] };
 					const { address: playerAddress, boardCommitment, ships } = data;
 
 					if (!playerAddress || !boardCommitment || !ships) {
@@ -399,6 +399,7 @@ export class GameSession {
 	}
 
 	// Handle shot making (backend gameplay)
+	// Handle shot making (backend gameplay)
 	private async handleMakeShotRequest(request: Request): Promise<Response> {
 		return PerformanceMonitor.trackOperation(
 			'handleMakeShotRequest',
@@ -406,7 +407,7 @@ export class GameSession {
 				try {
 					GameValidator.validateGameState(this.sessionId, this.status, ['ACTIVE']);
 
-					const data = await request.json() as { address: string; x: number; y: number };
+					const data = (await request.json()) as { address: string; x: number; y: number };
 					const { address: playerAddress, x, y } = data;
 
 					if (!playerAddress || x === undefined || y === undefined) {
@@ -421,17 +422,6 @@ export class GameSession {
 					GameValidator.validateTurn(this.sessionId, playerAddress, this.currentTurn, this.players);
 					GameValidator.validateCoordinates(x, y);
 
-					// Check if already shot at this location
-					const alreadyShot = this.shots.some((shot) => shot.x === x && shot.y === y);
-					if (alreadyShot) {
-						throw ErrorHandler.createError(
-							ErrorCode.VALIDATION_FAILED,
-							'Already shot at this location',
-							{ x, y },
-							{ sessionId: this.sessionId, playerId: playerAddress }
-						);
-					}
-
 					// Determine target player
 					const targetPlayer = this.players.find((p) => p !== playerAddress);
 					if (!targetPlayer) {
@@ -439,6 +429,22 @@ export class GameSession {
 							ErrorCode.INVALID_GAME_STATE,
 							'No target player found',
 							{},
+							{ sessionId: this.sessionId, playerId: playerAddress }
+						);
+					}
+
+					// FIXED: Check if THIS player has already shot at this position on their OPPONENT'S board
+					// We need to track shots per player against their target, not globally
+					const alreadyShot = this.shots.some(
+						(shot) => shot.x === x && shot.y === y && shot.player === playerAddress // Only check shots made by current player
+						// Note: We don't need to check target player because each player shoots at their opponent
+					);
+
+					if (alreadyShot) {
+						throw ErrorHandler.createError(
+							ErrorCode.VALIDATION_FAILED,
+							'Already shot at this location',
+							{ x, y },
 							{ sessionId: this.sessionId, playerId: playerAddress }
 						);
 					}
@@ -468,7 +474,7 @@ export class GameSession {
 
 					// Update game state
 					if (result.isHit) {
-						// Switch turns (player gets another turn on hit)
+						// Player gets another turn for hitting (optional rule - you can change this)
 						this.scheduleTurnTimeout();
 					} else {
 						// Switch turns on miss
@@ -535,7 +541,7 @@ export class GameSession {
 		try {
 			GameValidator.validateGameState(this.sessionId, this.status, ['ACTIVE']);
 
-			const data = await request.json() as ForfeitRequest;
+			const data = (await request.json()) as ForfeitRequest;
 			const playerAddress = data.address;
 
 			if (!this.players.includes(playerAddress)) {
@@ -789,9 +795,9 @@ export class GameSession {
 
 	// Load session data from durable storage
 	private async loadSessionData(): Promise<void> {
-		const sessionData = await this.state.storage.get('sessionData') as SessionData | null;
-		const gameData = await this.state.storage.get('gameData') as { 
-			gameStartedAt: number | null; 
+		const sessionData = (await this.state.storage.get('sessionData')) as SessionData | null;
+		const gameData = (await this.state.storage.get('gameData')) as {
+			gameStartedAt: number | null;
 			shots: Shot[];
 		} | null;
 
