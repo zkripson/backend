@@ -646,11 +646,33 @@ export class GameSession {
 
 		this.forfeitTimeout = setTimeout(async () => {
 			if (this.status === 'ACTIVE' && this.currentTurn && this.turnStartedAt) {
-				GameValidator.validateTimeout(this.sessionId, this.turnStartedAt, this.TURN_TIMEOUT_MS, 'Turn');
+				const currentTime = Date.now();
+				const turnDuration = currentTime - this.turnStartedAt;
 
-				// Forfeit the current player's turn
-				const winner = this.players.find((p) => p !== this.currentTurn);
-				await this.endGame(winner || null, 'TIMEOUT');
+				if (turnDuration >= this.TURN_TIMEOUT_MS) {
+					// FIXED: Switch turn to opponent instead of ending game
+					const nextPlayer = this.players.find((p) => p !== this.currentTurn);
+
+					if (nextPlayer) {
+						this.currentTurn = nextPlayer;
+						this.turnStartedAt = Date.now();
+
+						// Save updated state
+						await this.saveSessionData();
+
+						// Broadcast turn switch due to timeout
+						this.broadcastToAll({
+							type: 'turn_timeout',
+							previousPlayer: this.currentTurn === this.players[0] ? this.players[1] : this.players[0],
+							nextTurn: this.currentTurn,
+							turnStartedAt: this.turnStartedAt,
+							message: 'Turn timed out, switching to opponent',
+						});
+
+						// Schedule next turn timeout
+						this.scheduleTurnTimeout();
+					}
+				}
 			}
 		}, this.TURN_TIMEOUT_MS);
 	}
