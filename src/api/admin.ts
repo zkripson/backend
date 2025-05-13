@@ -4,7 +4,7 @@
  * Provides administrative functions and monitoring capabilities
  * for production deployment
  */
-import { Env } from '../index';
+import { Env } from '../types';
 import { PerformanceMonitor, HealthChecker } from '../utils/errorMonitoring';
 
 /**
@@ -175,7 +175,7 @@ async function handleSessionDetails(sessionId: string, env: Env): Promise<Respon
 		);
 
 		if (response.status === 200) {
-			const sessionData = await response.json() as Record<string, any>;
+			const sessionData = (await response.json()) as Record<string, any>;
 
 			// Add admin-specific information
 			const adminSessionData = {
@@ -269,8 +269,8 @@ async function handleGameStats(env: Env): Promise<Response> {
 function handleSystemConfig(env: Env): Response {
 	const config = {
 		environment: 'production', // Would be determined by env vars
-		megaeth: {
-			rpcUrl: env.MEGAETH_RPC_URL ? '***configured***' : 'not configured',
+		baseSepolia: {
+			rpcUrl: env.BASE_SEPOLIA_RPC_URL ? '***configured***' : 'not configured',
 			gameFactory: env.GAME_FACTORY_ADDRESS ? '***configured***' : 'not configured',
 		},
 		gameSettings: {
@@ -303,7 +303,7 @@ async function handleForceCleanup(request: Request, env: Env): Promise<Response>
 	}
 
 	try {
-		const data = await request.json() as { type: 'expired_invites' | 'old_sessions' };
+		const data = (await request.json()) as { type: 'expired_invites' | 'old_sessions' };
 		const cleanupType = data.type;
 
 		switch (cleanupType) {

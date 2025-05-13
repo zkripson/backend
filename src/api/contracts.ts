@@ -1,12 +1,12 @@
 /**
- * Contracts API Endpoints
+ *Contracts API Endpoints with Improved Integration
  *
- * Handles interactions with MegaETH smart contracts:
- * - Getting contract addresses and ABIs
- * - Recording on-chain game creations
- * - Syncing session state with contract state
+ * Handles interactions with deployed Base Sepolia smart contracts using
+ * the enhanced ContractGameService with proper error handling and type safety
  */
-import { Env } from '../index';
+import { Env } from '../types';
+import { ContractGameService, getContractAddresses } from '../services/contractService';
+import { ErrorHandler, ErrorCode } from '../utils/errorMonitoring';
 
 /**
  * Main handler for contract-related API requests
@@ -15,17 +15,44 @@ export async function handleContractRequest(request: Request, env: Env, ctx: Exe
 	const url = new URL(request.url);
 	const path = url.pathname;
 
-	// Handle contract endpoints
+	// Contract configuration
 	if (path.endsWith('/api/contracts/config')) {
 		return handleGetContractConfig(env);
 	}
 
-	if (path.endsWith('/api/contracts/register-game')) {
-		return handleRegisterGame(request, env);
+	// Player statistics
+	if (path.endsWith('/api/contracts/player-stats')) {
+		return handleGetPlayerStats(request, env);
 	}
 
-	if (path.endsWith('/api/contracts/sync-session')) {
-		return handleSyncSession(request, env);
+	// Global statistics
+	if (path.endsWith('/api/contracts/global-stats')) {
+		return handleGetGlobalStats(env);
+	}
+
+	// Leaderboard (placeholder for now)
+	if (path.endsWith('/api/contracts/leaderboard')) {
+		return handleGetLeaderboard(request, env);
+	}
+
+	// Reward status
+	if (path.endsWith('/api/contracts/reward-status')) {
+		return handleGetRewardStatus(request, env);
+	}
+
+	// Reward parameters
+	if (path.endsWith('/api/contracts/reward-params')) {
+		return handleGetRewardParams(env);
+	}
+
+	// Game contract address lookup
+	if (path.endsWith('/api/contracts/game-contract')) {
+		return handleGetGameContract(request, env);
+	}
+
+	// Health check for contract connectivity
+	if (path.endsWith('/api/contracts/health')) {
+		return handleContractHealth(env);
 	}
 
 	// Default not found response
@@ -39,151 +66,356 @@ export async function handleContractRequest(request: Request, env: Env, ctx: Exe
  * Handle GET /api/contracts/config - Get contract configuration
  */
 function handleGetContractConfig(env: Env): Response {
-	// Return contract addresses and ABIs that clients need
-	return new Response(
-		JSON.stringify({
-			megaEthConfig: {
-				rpcUrl: env.MEGAETH_RPC_URL,
-				wsUrl: env.MEGAETH_RPC_URL.replace('https://', 'wss://'),
-				gameFactoryAddress: env.GAME_FACTORY_ADDRESS,
-				gameFactoryABI: [
-					'function createGame(address opponent) external returns (uint256 gameId)',
-					'function games(uint256 gameId) external view returns (address)',
-					'function playerGames(address player) external view returns (uint256[])',
-				],
-				gameABI: [
-					'function initialize(uint256 _gameId, address _player1, address _player2, address _factory) public',
-					'function submitBoard(bytes32 boardCommitment, bytes calldata zkProof) external',
-					'function makeShot(uint8 x, uint8 y) external',
-					'function submitShotResult(uint8 x, uint8 y, bool isHit, bytes calldata zkProof) external',
-					'function verifyGameEnd(bytes calldata zkProof) external',
-					'function forfeit() external',
-					'event ShotFired(address indexed player, uint8 x, uint8 y, uint256 indexed gameId)',
-					'event ShotResult(address indexed player, uint8 x, uint8 y, bool isHit, uint256 indexed gameId)',
-					'event GameCompleted(address indexed winner, uint256 indexed gameId, uint256 endTime)',
-				],
-				zkVerifierAddress: '', // Would be populated from environment in production
-				zkVerifierABI: [
-					'function verifyBoardPlacement(bytes32 boardCommitment, bytes calldata proof) external view returns (bool)',
-					'function verifyShotResult(bytes32 boardCommitment, uint8 x, uint8 y, bool claimed_hit, bytes calldata proof) external view returns (bool)',
-					'function verifyGameEnd(bytes32 boardCommitment, bytes32 shotHistoryHash, bytes calldata proof) external view returns (bool)',
-				],
+	try {
+		const contractService = new ContractGameService(env);
+		const config = contractService.getContractConfig();
+		const contractAddresses = getContractAddresses(env);
+
+		const fullConfig = {
+			network: env.NETWORK === 'base' ? 'Base Mainnet' : 'Base Sepolia',
+			chainId: env.NETWORK === 'base' ? 8453 : 84532,
+			contracts: contractAddresses,
+			...config,
+			features: {
+				gameFactory: true,
+				statistics: true,
+				rewards: true,
+				nft: false, // Not implemented yet
+				zkProofs: false, // Simplified version without ZK
 			},
-		}),
-		{
-			headers: { 'Content-Type': 'application/json' },
-		}
-	);
-}
+		};
 
-/**
- * Handle POST /api/contracts/register-game - Register an on-chain game with a session
- */
-async function handleRegisterGame(request: Request, env: Env): Promise<Response> {
-	// Ensure the request is a POST
-	if (request.method !== 'POST') {
-		return new Response(JSON.stringify({ error: 'Method not allowed' }), {
-			status: 405,
-			headers: { 'Content-Type': 'application/json' },
+		return new Response(JSON.stringify(fullConfig), {
+			headers: {
+				'Content-Type': 'application/json',
+				'Access-Control-Allow-Origin': '*',
+			},
 		});
-	}
-
-	try {
-		const data = (await request.json()) as { sessionId: string; gameId: number; gameContractAddress: string };
-
-		// Validate required fields
-		if (!data.sessionId || !data.gameId || !data.gameContractAddress) {
-			return new Response(
-				JSON.stringify({
-					error: 'Session ID, game ID, and contract address are required',
-				}),
-				{
-					status: 400,
-					headers: { 'Content-Type': 'application/json' },
-				}
-			);
-		}
-
-		// Get the Game Session Durable Object
-		const sessionDO = env.GAME_SESSIONS.get(env.GAME_SESSIONS.idFromName(data.sessionId));
-
-		// Forward the request to update session with contract info
-		const response = await sessionDO.fetch(
-			new Request('https://dummy-url/register-contract', {
-				method: 'POST',
-				headers: {
-					'Content-Type': 'application/json',
-				},
-				body: JSON.stringify({
-					gameId: data.gameId,
-					gameContractAddress: data.gameContractAddress,
-				}),
-			})
-		);
-
-		return response;
-	} catch (error) {
-		console.error('Error registering game:', error);
-		return new Response(JSON.stringify({ error: 'Failed to register game' }), {
-			status: 500,
-			headers: { 'Content-Type': 'application/json' },
-		});
+	} catch (error: unknown) {
+		console.error('Error getting contract config:', error);
+		return ErrorHandler.handleError(error);
 	}
 }
 
 /**
- * Handle POST /api/contracts/sync-session - Sync session state with contract state
+ * Handle GET /api/contracts/player-stats?address=... - Get player statistics from contract
  */
-async function handleSyncSession(request: Request, env: Env): Promise<Response> {
-	// Ensure the request is a POST
-	if (request.method !== 'POST') {
-		return new Response(JSON.stringify({ error: 'Method not allowed' }), {
-			status: 405,
-			headers: { 'Content-Type': 'application/json' },
-		});
+async function handleGetPlayerStats(request: Request, env: Env): Promise<Response> {
+	const url = new URL(request.url);
+	const address = url.searchParams.get('address');
+
+	if (!address) {
+		return ErrorHandler.handleError(ErrorHandler.createError(ErrorCode.VALIDATION_FAILED, 'Player address is required'));
+	}
+
+	// Validate address format
+	if (!address.match(/^0x[a-fA-F0-9]{40}$/)) {
+		return ErrorHandler.handleError(ErrorHandler.createError(ErrorCode.VALIDATION_FAILED, 'Invalid address format'));
 	}
 
 	try {
-		const data = (await request.json()) as { sessionId: string; event: any };
+		const contractService = new ContractGameService(env);
+		const stats = await contractService.getPlayerStats(address as `0x${string}`);
 
-		// Validate required fields
-		if (!data.sessionId || !data.event) {
-			return new Response(
-				JSON.stringify({
-					error: 'Session ID and event data are required',
-				}),
-				{
-					status: 400,
-					headers: { 'Content-Type': 'application/json' },
-				}
-			);
-		}
-
-		// Get the Game Session Durable Object
-		const sessionDO = env.GAME_SESSIONS.get(env.GAME_SESSIONS.idFromName(data.sessionId));
-
-		// Forward the event to the session
-		await sessionDO.fetch(
-			new Request('https://dummy-url/event', {
-				method: 'POST',
+		return new Response(
+			JSON.stringify({
+				success: true,
+				address,
+				stats,
+				timestamp: Date.now(),
+			}),
+			{
 				headers: {
 					'Content-Type': 'application/json',
+					'Access-Control-Allow-Origin': '*',
 				},
-				body: JSON.stringify({
-					type: 'game_event',
-					event: data.event,
-				}),
-			})
+			}
 		);
+	} catch (error: unknown) {
+		console.error('Error fetching player stats:', error);
+		return ErrorHandler.handleError(error);
+	}
+}
 
-		return new Response(JSON.stringify({ success: true }), {
-			headers: { 'Content-Type': 'application/json' },
-		});
+/**
+ * Handle GET /api/contracts/global-stats - Get global game statistics
+ */
+async function handleGetGlobalStats(env: Env): Promise<Response> {
+	try {
+		const contractService = new ContractGameService(env);
+		const stats = await contractService.getGlobalStats();
+
+		return new Response(
+			JSON.stringify({
+				success: true,
+				stats,
+				timestamp: Date.now(),
+			}),
+			{
+				headers: {
+					'Content-Type': 'application/json',
+					'Access-Control-Allow-Origin': '*',
+				},
+			}
+		);
+	} catch (error: unknown) {
+		console.error('Error fetching global stats:', error);
+		return ErrorHandler.handleError(error);
+	}
+}
+
+/**
+ * Handle GET /api/contracts/leaderboard?type=wins&limit=10 - Get leaderboard
+ * Note: This is a placeholder implementation - the actual leaderboard
+ * would need to be implemented in the Statistics contract
+ */
+async function handleGetLeaderboard(request: Request, env: Env): Promise<Response> {
+	const url = new URL(request.url);
+	const type = url.searchParams.get('type') || 'wins';
+	const limit = parseInt(url.searchParams.get('limit') || '10');
+
+	// Validate leaderboard type
+	const validTypes = ['wins', 'winRate', 'streak', 'weekly', 'monthly'];
+	if (!validTypes.includes(type)) {
+		return ErrorHandler.handleError(ErrorHandler.createError(ErrorCode.VALIDATION_FAILED, 'Invalid leaderboard type', { validTypes }));
+	}
+
+	// Validate limit
+	if (limit < 1 || limit > 100) {
+		return ErrorHandler.handleError(ErrorHandler.createError(ErrorCode.VALIDATION_FAILED, 'Limit must be between 1 and 100'));
+	}
+
+	try {
+		// TODO: Implement actual leaderboard functionality in contracts
+		// For now, return a placeholder response
+		const mockLeaderboard = Array.from({ length: Math.min(limit, 5) }, (_, i) => ({
+			rank: i + 1,
+			player: `0x${'1'.repeat(40)}` as `0x${string}`,
+			score: 100 - i * 10,
+			type,
+		}));
+
+		return new Response(
+			JSON.stringify({
+				success: true,
+				leaderboard: mockLeaderboard,
+				type,
+				limit,
+				timestamp: Date.now(),
+				note: 'Leaderboard functionality requires contract implementation',
+			}),
+			{
+				headers: {
+					'Content-Type': 'application/json',
+					'Access-Control-Allow-Origin': '*',
+				},
+			}
+		);
+	} catch (error: unknown) {
+		console.error('Error fetching leaderboard:', error);
+		return ErrorHandler.handleError(error);
+	}
+}
+
+/**
+ * Handle GET /api/contracts/reward-status?address=... - Check reward eligibility
+ */
+async function handleGetRewardStatus(request: Request, env: Env): Promise<Response> {
+	const url = new URL(request.url);
+	const address = url.searchParams.get('address');
+
+	if (!address) {
+		return ErrorHandler.handleError(ErrorHandler.createError(ErrorCode.VALIDATION_FAILED, 'Player address is required'));
+	}
+
+	// Validate address format
+	if (!address.match(/^0x[a-fA-F0-9]{40}$/)) {
+		return ErrorHandler.handleError(ErrorHandler.createError(ErrorCode.VALIDATION_FAILED, 'Invalid address format'));
+	}
+
+	try {
+		const contractService = new ContractGameService(env);
+		const canReceive = await contractService.canReceiveReward(address as `0x${string}`);
+
+		return new Response(
+			JSON.stringify({
+				success: true,
+				address,
+				canReceiveReward: canReceive.canReceive,
+				reason: canReceive.reason,
+				timestamp: Date.now(),
+			}),
+			{
+				headers: {
+					'Content-Type': 'application/json',
+					'Access-Control-Allow-Origin': '*',
+				},
+			}
+		);
+	} catch (error: unknown) {
+		console.error('Error checking reward status:', error);
+		return ErrorHandler.handleError(error);
+	}
+}
+
+/**
+ * Handle GET /api/contracts/reward-params - Get current reward parameters
+ */
+async function handleGetRewardParams(env: Env): Promise<Response> {
+	try {
+		const contractService = new ContractGameService(env);
+		const rewardParams = await contractService.getRewardParams();
+
+		return new Response(
+			JSON.stringify({
+				success: true,
+				rewardParams: {
+					participationReward: rewardParams.participationReward,
+					victoryBonus: rewardParams.victoryBonus,
+					// Convert to human readable format (assuming 18 decimals for SHIP tokens)
+					participationRewardFormatted: (rewardParams.participationReward / 1e18).toFixed(2) + ' SHIP',
+					victoryBonusFormatted: (rewardParams.victoryBonus / 1e18).toFixed(2) + ' SHIP',
+				},
+				timestamp: Date.now(),
+			}),
+			{
+				headers: {
+					'Content-Type': 'application/json',
+					'Access-Control-Allow-Origin': '*',
+				},
+			}
+		);
+	} catch (error: unknown) {
+		console.error('Error getting reward parameters:', error);
+		return ErrorHandler.handleError(error);
+	}
+}
+
+/**
+ * Handle GET /api/contracts/game-contract?gameId=... - Get game contract address
+ */
+async function handleGetGameContract(request: Request, env: Env): Promise<Response> {
+	const url = new URL(request.url);
+	const gameIdParam = url.searchParams.get('gameId');
+
+	if (!gameIdParam) {
+		return ErrorHandler.handleError(ErrorHandler.createError(ErrorCode.VALIDATION_FAILED, 'Game ID is required'));
+	}
+
+	const gameId = parseInt(gameIdParam);
+	if (isNaN(gameId) || gameId < 0) {
+		return ErrorHandler.handleError(ErrorHandler.createError(ErrorCode.VALIDATION_FAILED, 'Invalid game ID'));
+	}
+
+	try {
+		const contractService = new ContractGameService(env);
+		const gameContractAddress = await contractService.getGameContract(gameId);
+
+		return new Response(
+			JSON.stringify({
+				success: true,
+				gameId,
+				gameContractAddress,
+				timestamp: Date.now(),
+			}),
+			{
+				headers: {
+					'Content-Type': 'application/json',
+					'Access-Control-Allow-Origin': '*',
+				},
+			}
+		);
+	} catch (error: unknown) {
+		console.error('Error getting game contract address:', error);
+		return ErrorHandler.handleError(error);
+	}
+}
+
+/**
+ * Handle GET /api/contracts/health - Check contract connectivity
+ */
+async function handleContractHealth(env: Env): Promise<Response> {
+	const contractAddresses = getContractAddresses(env);
+	const checks: Record<string, boolean> = {};
+
+	try {
+		const contractService = new ContractGameService(env);
+
+		// Test basic connectivity by trying to get global stats
+		try {
+			const stats = await contractService.getGlobalStats();
+			checks.statistics = true;
+			checks.connectivity = true;
+		} catch (error) {
+			console.error('Statistics contract check failed:', error);
+			checks.statistics = false;
+			checks.connectivity = false;
+		}
+
+		// Test reward contract
+		try {
+			await contractService.getRewardParams();
+			checks.rewards = true;
+		} catch (error) {
+			console.error('Rewards contract check failed:', error);
+			checks.rewards = false;
+		}
+
+		// Test factory contract by checking if we can read games mapping
+		try {
+			// Try to get a non-existent game (should not throw for valid contract)
+			await contractService.getGameContract(999999);
+			checks.gameFactory = true;
+		} catch (error: any) {
+			// This is expected for non-existent game, but if contract is unreachable,
+			// it would be a different error
+			if (error?.message?.includes('contract')) {
+				checks.gameFactory = false;
+			} else {
+				checks.gameFactory = true;
+			}
+		}
+
+		// Determine overall health
+		const healthyChecks = Object.values(checks).filter(Boolean).length;
+		const totalChecks = Object.keys(checks).length;
+		const status = healthyChecks === totalChecks ? 'healthy' : healthyChecks > totalChecks / 2 ? 'degraded' : 'unhealthy';
+
+		return new Response(
+			JSON.stringify({
+				status,
+				contracts: contractAddresses,
+				network: env.NETWORK === 'base' ? 'Base Mainnet' : 'Base Sepolia',
+				chainId: env.NETWORK === 'base' ? 8453 : 84532,
+				checks,
+				rpcUrl: env.BASE_RPC_URL || 'https://sepolia.base.org',
+				timestamp: Date.now(),
+			}),
+			{
+				status: status === 'healthy' ? 200 : status === 'degraded' ? 206 : 503,
+				headers: {
+					'Content-Type': 'application/json',
+					'Access-Control-Allow-Origin': '*',
+				},
+			}
+		);
 	} catch (error) {
-		console.error('Error syncing session:', error);
-		return new Response(JSON.stringify({ error: 'Failed to sync session' }), {
-			status: 500,
-			headers: { 'Content-Type': 'application/json' },
-		});
+		console.error('Contract health check failed:', error);
+		return new Response(
+			JSON.stringify({
+				status: 'unhealthy',
+				error: 'Failed to connect to contracts',
+				details: error instanceof Error ? error.message : String(error),
+				contracts: contractAddresses,
+				timestamp: Date.now(),
+			}),
+			{
+				status: 503,
+				headers: {
+					'Content-Type': 'application/json',
+					'Access-Control-Allow-Origin': '*',
+				},
+			}
+		);
 	}
 }

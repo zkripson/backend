@@ -47,10 +47,103 @@ export interface ForfeitRequest {
 export interface SubmitBoardRequest {
 	address: string;
 	boardCommitment: string;
-	shipPositions?: ShipCell[]; // Optional ship positions for local tracking
+	shipPositions?: ShipCell[];
 }
 
-// Game timing constants
+// Contract-related types
+export interface ContractConfig {
+	network: string;
+	chainId: number;
+	contracts: {
+		SHIPToken: string;
+		BattleshipGameImplementation: string;
+		BattleshipStatistics: string;
+		GameFactory: string;
+		Backend: string;
+	};
+	megaEthConfig: {
+		rpcUrl: string;
+		wsUrl: string;
+		gameFactoryAddress: string;
+		gameFactoryABI: string[];
+		gameABI: string[];
+		zkVerifierAddress: string;
+		zkVerifierABI: string[];
+	};
+	features: {
+		gameFactory: boolean;
+		statistics: boolean;
+		rewards: boolean;
+		nft: boolean;
+		zkProofs: boolean;
+	};
+}
+
+export interface PlayerStats {
+	totalGames: number;
+	wins: number;
+	losses: number;
+	draws: number;
+	winRate: number;
+	currentWinStreak: number;
+	bestWinStreak: number;
+	averageGameDuration: number;
+	totalRewardsEarned: number;
+	gamesThisWeek: number;
+	weeklyWinRate: number;
+}
+
+export interface GlobalStats {
+	totalGames: number;
+	totalPlayers: number;
+	averageDuration: number;
+	totalPlayTime: number;
+	longestGame: number;
+	shortestGame: number;
+	totalRewardsDistributed: number;
+}
+
+export interface RewardParams {
+	participationReward: number;
+	victoryBonus: number;
+	participationRewardFormatted?: string;
+	victoryBonusFormatted?: string;
+}
+
+export interface RewardStatus {
+	canReceive: boolean;
+	reason: string;
+}
+
+export interface LeaderboardEntry {
+	rank: number;
+	player: string;
+	score: number;
+	type: string;
+}
+
+export interface ContractHealthCheck {
+	status: 'healthy' | 'degraded' | 'unhealthy';
+	contracts: {
+		SHIPToken: string;
+		BattleshipGameImplementation: string;
+		BattleshipStatistics: string;
+		GameFactory: string;
+		Backend: string;
+	};
+	network: string;
+	chainId: number;
+	checks: {
+		connectivity: boolean;
+		statistics: boolean;
+		rewards: boolean;
+		gameFactory: boolean;
+	};
+	rpcUrl: string;
+	timestamp: number;
+}
+
+// Game constants
 export const GAME_CONSTANTS = {
 	TURN_TIMEOUT_MS: 15 * 1000, // 15 seconds
 	GAME_TIMEOUT_MS: 3 * 60 * 1000, // 3 minutes
@@ -59,6 +152,7 @@ export const GAME_CONSTANTS = {
 	TOTAL_SHIPS: 5,
 };
 
+// Player profile types
 export interface PlayerData {
 	address: string;
 	username: string | null;
@@ -124,6 +218,7 @@ export interface ProfileUpdate {
 	address?: string;
 }
 
+// Invitation types
 export interface Invitation {
 	id: string;
 	code: string;
@@ -178,6 +273,8 @@ export interface GameStateMessage {
 			turnTimeoutMs: number;
 			gameTimeoutMs: number;
 		};
+		gameId?: number | null;
+		gameContractAddress?: string | null;
 	};
 }
 
@@ -225,6 +322,15 @@ export interface GameOverMessage {
 	};
 }
 
+export interface RewardsDistributedMessage {
+	type: 'rewards_distributed';
+	gameId: number;
+	rewards: Array<{
+		player: string;
+		isWinner: boolean;
+	}>;
+}
+
 // Error handling types
 export interface ErrorResponse {
 	error: string;
@@ -237,19 +343,9 @@ export interface ValidationError {
 	message: string;
 }
 
-// Contract interaction types
-export interface ContractConfig {
-	rpcUrl: string;
-	wsUrl: string;
-	gameFactoryAddress: string;
-	gameFactoryABI: string[];
-	gameABI: string[];
-	zkVerifierAddress: string;
-	zkVerifierABI: string[];
-}
-
+// Contract event types
 export interface GameEvent {
-	name: 'ShotFired' | 'ShotResult' | 'GameCompleted';
+	name: 'ShotFired' | 'ShotResult' | 'GameCompleted' | 'GameCreated' | 'GameStarted' | 'RewardMinted';
 	player?: string;
 	x?: number;
 	y?: number;
@@ -259,4 +355,82 @@ export interface GameEvent {
 	blockNumber: string;
 	transactionHash: string;
 	timestamp: number;
+}
+
+// Contract interaction types
+export interface BatchReward {
+	player: `0x${string}`;
+	isWinner: boolean;
+	gameId: number;
+}
+
+export interface GameCreationResult {
+	gameId: number;
+	gameContractAddress: `0x${string}`;
+	transactionHash: `0x${string}`;
+}
+
+export interface GameCompletionResult {
+	gameTransactionHash: `0x${string}`;
+	factoryTransactionHash: `0x${string}`;
+}
+
+// Ship and board types (extended from shipTracker)
+export interface Ship {
+	id: string;
+	length: number;
+	cells: Array<{ x: number; y: number }>;
+	hits: Array<{ x: number; y: number }>;
+	isSunk: boolean;
+}
+
+export interface Board {
+	size: number;
+	ships: Ship[];
+	cells: number[][]; // 0 = water, 1-5 = ship parts
+}
+
+// Environment types
+export interface Env {
+	// Durable Object bindings
+	GAME_SESSIONS: DurableObjectNamespace;
+	PLAYER_PROFILES: DurableObjectNamespace;
+	INVITE_MANAGER: DurableObjectNamespace;
+
+	// Contract addresses
+	GAME_FACTORY_ADDRESS: string;
+	BATTLESHIP_STATS_ADDRESS: string;
+	SHIP_TOKEN_ADDRESS: string;
+	BATTLESHIP_GAME_IMPL_ADDRESS: string;
+	BACKEND_ADDRESS: string;
+	VERIFIER_ADDRESS?: string;
+
+	// Network configuration
+	NETWORK: 'base' | 'base-sepolia';
+	BASE_RPC_URL: string;
+	BASE_CHAIN_ID: string;
+	BASE_SEPOLIA_CHAIN_ID: string;
+	BASE_SEPOLIA_RPC_URL: string;
+
+	// Backend configuration
+	BACKEND_PRIVATE_KEY: string;
+
+	// Environment settings
+	ENVIRONMENT?: 'development' | 'staging' | 'production';
+	LOG_LEVEL?: 'error' | 'warn' | 'info' | 'debug';
+
+	// Feature flags
+	AUTO_DISTRIBUTE_REWARDS?: string; // 'true' | 'false'
+	ENABLE_DEBUG_LOGS?: string; // 'true' | 'false'
+	MOCK_CONTRACT_INTERACTIONS?: string; // 'true' | 'false'
+
+	// Rate limiting
+	RATE_LIMIT_PER_MINUTE?: string;
+
+	// Optional configurations
+	CORS_ORIGINS?: string;
+	ADMIN_ACCESS_TOKEN?: string;
+	TURN_TIMEOUT_MS?: string;
+	GAME_TIMEOUT_MS?: string;
+	REWARD_DISTRIBUTION_DELAY_MS?: string;
 }

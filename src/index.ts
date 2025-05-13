@@ -24,12 +24,14 @@ import { GameSession } from './durable_objects/GameSession';
 import { PlayerProfile } from './durable_objects/PlayerProfile';
 import { InviteManager } from './durable_objects/InviteManager';
 
+import { Env } from './types';
+
 // Export the Durable Object classes so Cloudflare can find them
 export { GameSession, PlayerProfile, InviteManager };
 
 // Add a global startTime for uptime tracking
 declare global {
-    var startTime: number;
+	var startTime: number;
 }
 globalThis.startTime = Date.now();
 
@@ -40,19 +42,6 @@ const corsHeaders = {
 	'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-Requested-With',
 	'Access-Control-Max-Age': '86400', // 24 hours
 };
-
-export interface Env {
-	// Durable Object bindings
-	GAME_SESSIONS: DurableObjectNamespace;
-	PLAYER_PROFILES: DurableObjectNamespace;
-	INVITE_MANAGER: DurableObjectNamespace;
-
-	// Environment variables
-	MEGAETH_RPC_URL: string;
-	GAME_FACTORY_ADDRESS: string;
-	ENVIRONMENT?: string; // 'development' | 'staging' | 'production'
-	LOG_LEVEL?: string; // 'error' | 'warn' | 'info' | 'debug'
-}
 
 export default {
 	async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
@@ -245,7 +234,7 @@ async function handleHealthCheck(env: Env): Promise<Response> {
 		version: '1.0.0',
 		checks: {
 			durableObjects: true,
-			megaeth: !!env.MEGAETH_RPC_URL,
+			baseSepolia: !!env.BASE_SEPOLIA_RPC_URL,
 		},
 	};
 
