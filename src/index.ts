@@ -145,7 +145,7 @@ async function handleRequest(request: Request, env: Env, ctx: ExecutionContext, 
 				status: 'online',
 				environment: env.ENVIRONMENT || 'development',
 				features: {
-					turnTimeoutMs: 30 * 1000,
+					turnTimeoutMs: 15 * 1000,
 					gameTimeoutMs: 3 * 60 * 1000,
 					shipTracking: true,
 					errorMonitoring: true,
