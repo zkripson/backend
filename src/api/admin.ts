@@ -274,8 +274,8 @@ function handleSystemConfig(env: Env): Response {
 			gameFactory: env.GAME_FACTORY_ADDRESS ? '***configured***' : 'not configured',
 		},
 		gameSettings: {
-			turnTimeoutMs: 60 * 1000,
-			gameTimeoutMs: 10 * 60 * 1000,
+			turnTimeoutMs: 30 * 1000,
+			gameTimeoutMs: 3 * 60 * 1000,
 			boardSize: 10,
 			shipLengths: [5, 4, 3, 3, 2],
 		},

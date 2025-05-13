@@ -39,8 +39,8 @@ export class GameSession {
 	private totalShips: number = 5; // Standard battleship has 5 ships
 
 	// Constants
-	private readonly TURN_TIMEOUT_MS = 60 * 1000; // 60 seconds
-	private readonly GAME_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes
+	private readonly TURN_TIMEOUT_MS = 30 * 1000; // 30 seconds
+	private readonly GAME_TIMEOUT_MS = 3 * 60 * 1000; // 3 minutes
 
 	constructor(state: DurableObjectState, env: any) {
 		this.state = state;

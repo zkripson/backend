@@ -52,8 +52,8 @@ export interface SubmitBoardRequest {
 
 // Game timing constants
 export const GAME_CONSTANTS = {
-	TURN_TIMEOUT_MS: 60 * 1000, // 60 seconds
-	GAME_TIMEOUT_MS: 10 * 60 * 1000, // 10 minutes
+	TURN_TIMEOUT_MS: 30 * 1000, // 30 seconds
+	GAME_TIMEOUT_MS: 3 * 60 * 1000, // 3 minutes
 	BOARD_SIZE: 10,
 	SHIP_LENGTHS: [5, 4, 3, 3, 2], // Carrier, Battleship, Cruiser, Submarine, Destroyer
 	TOTAL_SHIPS: 5,
