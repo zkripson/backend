@@ -458,10 +458,17 @@ export class GameSession {
 
 	// End the game and handle on-chain reporting
 	private async endGame(winner: string | null, reason: 'COMPLETED' | 'FORFEIT' | 'TIMEOUT' | 'TIME_LIMIT'): Promise<void> {
-		try {
-			this.status = 'COMPLETED';
+		// Prevent double-ending the game
+		if (this.status === 'COMPLETED') {
+			console.log(`Game already completed, not ending again`);
+			return;
+		}
+		
+		console.log(`Ending game. Winner: ${winner || 'Tie'}, Reason: ${reason}`);
+		this.status = 'COMPLETED';
 
-			// Clear all timeouts
+		try {
+			// Clear all timeouts first to prevent any race conditions
 			if (this.turnTimeoutId !== null) {
 				clearTimeout(this.turnTimeoutId);
 				this.turnTimeoutId = null;
@@ -471,9 +478,11 @@ export class GameSession {
 				this.gameTimeoutId = null;
 			}
 
+			// Save the completed state immediately
 			await this.saveSessionData();
 
-			// Send final game state
+			// Send final game state to all connected players
+			const gameEndedAt = Date.now();
 			this.broadcastToAll({
 				type: 'game_over',
 				status: this.status,
@@ -483,46 +492,94 @@ export class GameSession {
 					shots: this.shots,
 					sunkShips: this.getSunkShipsCount(),
 					gameStartedAt: this.gameStartedAt,
-					gameEndedAt: Date.now(),
+					gameEndedAt: gameEndedAt,
+					duration: this.gameStartedAt ? (gameEndedAt - this.gameStartedAt) : null,
 				},
 			});
 
-			// Submit final result to contract
-			if (this.gameId !== null && this.gameContractAddress) {
-				await this.submitGameResultToContract(winner, reason);
+			// Submit final result to contract - wrapped in try/catch to ensure it doesn't prevent game ending
+			try {
+				if (this.gameId !== null && this.gameContractAddress) {
+					await this.submitGameResultToContract(winner, reason);
+				} else {
+					console.warn('No game ID or contract address available, skipping contract submission');
+				}
+			} catch (contractError) {
+				console.error('Error submitting game result to contract:', contractError);
+				// Don't throw here - we still want to complete the game even if contract submission fails
+				
+				// Notify players about the issue
+				this.broadcastToAll({
+					type: 'contract_error',
+					message: 'Failed to submit game result to blockchain. Please contact support.',
+					timestamp: Date.now(),
+				});
 			}
 		} catch (error) {
 			console.error('Error ending game:', error);
-			throw error;
+			// Still mark the game as completed even if there's an error
+			this.status = 'COMPLETED';
+			try {
+				await this.saveSessionData();
+			} catch (saveError) {
+				console.error('Failed to save completed game state:', saveError);
+			}
 		}
 	}
 
 	// Submit game result to smart contract
 	private async submitGameResultToContract(winner: string | null, reason: string): Promise<void> {
-		try {
-			if (this.gameId === null) {
-				console.warn('No game ID available, skipping contract submission');
-				return;
+		// Use a configurable retry mechanism
+		const MAX_RETRIES = 3;
+		const RETRY_DELAY_MS = 2000;
+		
+		let retries = 0;
+		let lastError = null;
+		
+		while (retries < MAX_RETRIES) {
+			try {
+				if (this.gameId === null) {
+					console.warn('No game ID available, skipping contract submission');
+					return;
+				}
+
+				const endReasonMap: Record<string, string> = {
+					COMPLETED: 'completed', // Game completed normally with a winner
+					FORFEIT: 'forfeit',     // Player explicitly forfeited
+					TIMEOUT: 'timeout',     // Player turn timed out repeatedly
+					TIME_LIMIT: 'time_limit', // Overall game time limit reached
+				};
+
+				const totalShots = this.shots.length;
+				const endReason = endReasonMap[reason] || 'unknown';
+				const winnerSunkShips = winner ? this.getSunkShipsCount()[winner] || 0 : 0;
+				
+				// Enhanced logging with game statistics
+				console.log(`Submitting game result to contract: gameId=${this.gameId}, winner=${winner || 'Tie'}, ` +
+					`reason=${endReason}, totalShots=${totalShots}, sunkShips=${JSON.stringify(this.getSunkShipsCount())}`);
+
+				// Call the contract service to finalize the game
+				await this.contractService.completeGame(this.gameId, winner as `0x${string}` | null, totalShots, endReason);
+
+				console.log(`Successfully submitted game result for game ${this.gameId}`);
+				return; // Success - exit the function
+				
+			} catch (error) {
+				lastError = error;
+				retries++;
+				console.error(`Failed to submit game result to contract (attempt ${retries}/${MAX_RETRIES}):`, error);
+				
+				if (retries < MAX_RETRIES) {
+					// Wait before retrying
+					await new Promise(resolve => setTimeout(resolve, RETRY_DELAY_MS));
+					console.log(`Retrying contract submission (${retries}/${MAX_RETRIES})...`);
+				}
 			}
-
-			const endReasonMap: Record<string, string> = {
-				COMPLETED: 'completed',
-				FORFEIT: 'forfeit',
-				TIMEOUT: 'timeout',
-				TIME_LIMIT: 'time_limit',
-			};
-
-			const totalShots = this.shots.length;
-			const endReason = endReasonMap[reason] || 'unknown';
-
-			console.log(`Submitting game result to contract: gameId=${this.gameId}, winner=${winner}, reason=${endReason}`);
-
-			await this.contractService.completeGame(this.gameId, winner as `0x${string}` | null, totalShots, endReason);
-
-			console.log(`Successfully submitted game result for game ${this.gameId}`);
-		} catch (error) {
-			console.error('Failed to submit game result to contract:', error);
 		}
+		
+		// If we got here, all retries failed
+		console.error(`Failed to submit game result to contract after ${MAX_RETRIES} attempts. Last error:`, lastError);
+		throw new Error(`Failed to submit game result after ${MAX_RETRIES} attempts: ${lastError instanceof Error ? lastError.message : String(lastError)}`);
 	}
 
 	// Handle forfeit request
@@ -602,14 +659,26 @@ export class GameSession {
 
 		this.gameTimeoutId = setTimeout(async () => {
 			if (this.status === 'ACTIVE' && this.gameStartedAt) {
-				GameValidator.validateTimeout(this.sessionId, this.gameStartedAt, this.GAME_TIMEOUT_MS, 'Game');
-				await this.determineWinnerByShips();
+				const currentTime = Date.now();
+				const gameDuration = currentTime - this.gameStartedAt;
+				
+				if (gameDuration >= this.GAME_TIMEOUT_MS) {
+					console.log(`Game session ${this.sessionId} reached time limit of ${this.GAME_TIMEOUT_MS}ms, ending game`);
+					await this.determineWinnerByShips();
+				}
 			}
 		}, this.GAME_TIMEOUT_MS);
 	}
 
 	// Determine winner based on sunk ships
 	private async determineWinnerByShips(): Promise<void> {
+		// Make sure we only end the game once
+		if (this.status !== 'ACTIVE') {
+			console.log(`Game already completed, not determining winner by ships`);
+			return;
+		}
+		
+		console.log(`Determining winner by sunk ships count due to timeout`);
 		const sunkShipsCount = this.getSunkShipsCount();
 
 		let winner: string | null = null;
@@ -619,11 +688,17 @@ export class GameSession {
 			if (sunkCount > maxSunkShips) {
 				maxSunkShips = sunkCount;
 				winner = player;
-			} else if (sunkCount === maxSunkShips) {
-				winner = null; // Tie
+			} else if (sunkCount === maxSunkShips && maxSunkShips > 0) {
+				winner = null; // Tie only if both have sunk ships
 			}
 		}
 
+		// Give advantage to player who went second in case of no ships sunk
+		if (maxSunkShips === 0 && this.players.length === 2) {
+			winner = this.players[1]; // Second player wins in case of no activity
+		}
+
+		console.log(`Game ending due to time limit. Winner: ${winner || 'Tie'}, Sunk ships: ${JSON.stringify(sunkShipsCount)}`);
 		await this.endGame(winner, 'TIME_LIMIT');
 	}
 
@@ -646,21 +721,40 @@ export class GameSession {
 	// Resume timeouts on restart
 	private resumeTimeouts(): void {
 		if (this.status === 'ACTIVE') {
+			const currentTime = Date.now();
+			
+			// Handle turn timeout resume
 			if (this.turnStartedAt) {
-				const elapsed = Date.now() - this.turnStartedAt;
-				const remaining = Math.max(0, this.TURN_TIMEOUT_MS - elapsed);
-				if (remaining > 0) {
-					this.scheduleTurnTimeout();
+				const turnElapsed = currentTime - this.turnStartedAt;
+				if (turnElapsed >= this.TURN_TIMEOUT_MS) {
+					// Turn has already timed out, switch to the next player
+					const nextPlayer = this.players.find(p => p !== this.currentTurn);
+					if (nextPlayer) {
+						this.currentTurn = nextPlayer;
+						this.turnStartedAt = currentTime;
+						this.scheduleTurnTimeout();
+						console.log(`Resumed with turn timeout exceeded, switching to player ${nextPlayer}`);
+					}
+				} else {
+					// Schedule remaining time for turn timeout
+					const turnRemaining = Math.max(0, this.TURN_TIMEOUT_MS - turnElapsed);
+					setTimeout(() => this.scheduleTurnTimeout(), turnRemaining);
+					console.log(`Resumed turn timeout with ${turnRemaining}ms remaining`);
 				}
 			}
 
+			// Handle game timeout resume
 			if (this.gameStartedAt) {
-				const elapsed = Date.now() - this.gameStartedAt;
-				const remaining = Math.max(0, this.GAME_TIMEOUT_MS - elapsed);
-				if (remaining > 0) {
-					this.scheduleGameTimeout();
-				} else {
+				const gameElapsed = currentTime - this.gameStartedAt;
+				if (gameElapsed >= this.GAME_TIMEOUT_MS) {
+					// Game has already exceeded time limit
+					console.log(`Resumed with game timeout exceeded, ending game`);
 					this.determineWinnerByShips();
+				} else {
+					// Schedule remaining time for game timeout
+					const gameRemaining = Math.max(0, this.GAME_TIMEOUT_MS - gameElapsed);
+					setTimeout(() => this.scheduleGameTimeout(), gameRemaining);
+					console.log(`Resumed game timeout with ${gameRemaining}ms remaining`);
 				}
 			}
 		}
