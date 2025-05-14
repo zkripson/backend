@@ -15,7 +15,6 @@
 import { handleSessionRequest } from './api/sessions';
 import { handlePlayerRequest } from './api/players';
 import { handleInviteRequest } from './api/invites';
-import { handleContractRequest } from './api/contracts';
 import { handleAdminRequest, createMonitoringDashboard } from './api/admin';
 import { ErrorHandler, ErrorCode } from './utils/errorMonitoring';
 
@@ -114,10 +113,6 @@ async function handleRequest(request: Request, env: Env, ctx: ExecutionContext, 
 
 	if (path.startsWith('/api/invites')) {
 		return handleInviteRequest(request, env, ctx);
-	}
-
-	if (path.startsWith('/api/contracts')) {
-		return handleContractRequest(request, env, ctx);
 	}
 
 	// Health check endpoint

@@ -398,6 +398,8 @@ export class GameSession {
 					// Update game state
 					if (result.isHit) {
 						// Player gets another turn for hitting
+						// Reset the turn start time to reset the 15-second timeout
+						this.turnStartedAt = Date.now();
 						this.scheduleTurnTimeout();
 					} else {
 						// Switch turns on miss

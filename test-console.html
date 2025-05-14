@@ -409,8 +409,8 @@
                 </div>
                 <div class="info-card">
                     <h4>Game Rules</h4>
-                    <div>• 60 seconds per turn</div>
-                    <div>• 10 minute maximum game</div>
+                    <div>• 15 seconds per turn</div>
+                    <div>• 3 minute maximum game</div>
                     <div>• Winner = most ships sunk</div>
                     <div>• Auto-forfeit on timeout</div>
                 </div>
@@ -1001,15 +1001,15 @@
             if (gameState.gameStatus === 'ACTIVE' && gameState.turnStartedAt) {
                 const updateTurnTimer = () => {
                     const elapsed = Date.now() - gameState.turnStartedAt;
-                    const remaining = Math.max(0, 60000 - elapsed);
+                    const remaining = Math.max(0, 15000 - elapsed); // 15 seconds turn timeout
                     const seconds = Math.ceil(remaining / 1000);
                     
                     const timerEl = document.getElementById('turnTimer');
                     timerEl.textContent = `${seconds}s`;
                     
-                    if (seconds <= 10) {
+                    if (seconds <= 5) {
                         timerEl.className = 'timer danger';
-                    } else if (seconds <= 30) {
+                    } else if (seconds <= 8) {
                         timerEl.className = 'timer warning';
                     } else {
                         timerEl.className = 'timer';
@@ -1032,16 +1032,16 @@
             if (gameState.gameStatus === 'ACTIVE' && gameState.gameStartedAt) {
                 const updateGameTimer = () => {
                     const elapsed = Date.now() - gameState.gameStartedAt;
-                    const remaining = Math.max(0, 600000 - elapsed); // 10 minutes
+                    const remaining = Math.max(0, 180000 - elapsed); // 3 minutes
                     const minutes = Math.floor(remaining / 60000);
                     const seconds = Math.floor((remaining % 60000) / 1000);
                     
                     const timerEl = document.getElementById('gameTimer');
                     timerEl.textContent = `${minutes}:${seconds.toString().padStart(2, '0')}`;
                     
-                    if (remaining <= 60000) {
+                    if (remaining <= 30000) { // 30 seconds
                         timerEl.className = 'timer danger';
-                    } else if (remaining <= 180000) {
+                    } else if (remaining <= 60000) { // 1 minute
                         timerEl.className = 'timer warning';
                     } else {
                         timerEl.className = 'timer';
