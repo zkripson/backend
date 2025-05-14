@@ -8,6 +8,13 @@ import { base, baseSepolia } from 'viem/chains';
 import { privateKeyToAccount } from 'viem/accounts';
 import { ErrorHandler, ErrorCode } from '../utils/errorMonitoring';
 
+// Import ABIs from JSON files
+// Note: Make sure tsconfig.json has "resolveJsonModule": true to allow importing JSON files
+import GameFactoryABI from '../abis/GameFactoryWithStats.json';
+import BattleshipGameABI from '../abis/BattleshipGameImplementation.json';
+import SHIPTokenABI from '../abis/SHIPToken.json';
+import StatisticsABI from '../abis/BattleshipStatistics.json';
+
 // Define zero address for winner = null scenario
 export const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000' as `0x${string}`;
 
@@ -18,7 +25,7 @@ export interface GameCreatedEvent {
 		gameId: bigint;
 		player1: `0x${string}`;
 		player2: `0x${string}`;
-		gameContract: `0x${string}`;
+		gameAddress: `0x${string}`;
 	};
 }
 
@@ -43,60 +50,11 @@ export function getContractAddresses(env: any) {
 	};
 }
 
-// Contract ABIs aligned with those used in API
-export const GAME_FACTORY_ABI = [
-	// Core functions
-	'function createGame(address player1, address player2) external returns (uint256 gameId)',
-	'function createGame(address opponent) external returns (uint256 gameId)',
-	'function games(uint256 gameId) external view returns (address)',
-	'function playerGames(address player) external view returns (uint256[])',
-	'function reportGameCompletion(uint256 gameId, address winner, uint256 duration, uint256 totalShots, string calldata endReason) external',
-
-	// Events
-	'event GameCreated(uint256 indexed gameId, address indexed player1, address indexed player2, address gameContract)',
-];
-
-export const BATTLESHIP_GAME_ABI = [
-	// Initialization and state management
-	'function initialize(uint256 _gameId, address _player1, address _player2, address _factory) external',
-	'function initialize(uint256 _gameId, address _player1, address _player2, address _factory) public',
-	'function startGame() external',
-	'function submitGameResult(address winner, uint256 totalShots, string calldata endReason) external',
-	'function state() external view returns (uint8)',
-	'function createdAt() external view returns (uint256)',
-
-	// Game mechanics
-	'function submitBoard(bytes32 boardCommitment, bytes calldata zkProof) external',
-	'function makeShot(uint8 x, uint8 y) external',
-	'function submitShotResult(uint8 x, uint8 y, bool isHit, bytes calldata zkProof) external',
-	'function verifyGameEnd(bytes calldata zkProof) external',
-	'function forfeit() external',
-
-	// Events
-	'event GameStarted(uint256 indexed gameId, uint256 startTime)',
-	'event GameCompleted(uint256 indexed gameId, address indexed winner, uint256 endTime, string endReason)',
-	'event ShotFired(address indexed player, uint8 x, uint8 y, uint256 indexed gameId)',
-	'event ShotResult(address indexed player, uint8 x, uint8 y, bool isHit, uint256 indexed gameId)',
-];
-
-export const SHIP_TOKEN_ABI = [
-	'function mintBatchRewards((address player, bool isWinner, uint256 gameId)[]) external',
-	'function canReceiveReward(address player) external view returns (bool, string)',
-	'function getRewardParams() external view returns (uint256 participationReward, uint256 victoryBonus)',
-	'event RewardMinted(address indexed player, uint256 amount, bool isWinner, uint256 indexed gameId)',
-];
-
-export const STATISTICS_ABI = [
-	'function getPlayerStats(address player) external view returns (uint256, uint256, uint256, uint256, uint256, uint256, uint256, uint256, uint256, uint256, uint256)',
-	'function getGlobalStats() external view returns (uint256, uint256, uint256, uint256, uint256, uint256, uint256)',
-	'function getLeaderboard(bytes32 leaderboardType, uint256 limit) external view returns ((address player, uint256 score, uint256 rank)[])',
-];
-
-export const VERIFIER_ABI = [
-	'function verifyBoardPlacement(bytes32 boardCommitment, bytes calldata proof) external view returns (bool)',
-	'function verifyShotResult(bytes32 boardCommitment, uint8 x, uint8 y, bool claimed_hit, bytes calldata proof) external view returns (bool)',
-	'function verifyGameEnd(bytes32 boardCommitment, bytes32 shotHistoryHash, bytes calldata proof) external view returns (bool)',
-];
+// Contract ABIs imported from JSON files
+export const GAME_FACTORY_ABI = GameFactoryABI;
+export const BATTLESHIP_GAME_ABI = BattleshipGameABI;
+export const SHIP_TOKEN_ABI = SHIPTokenABI;
+export const STATISTICS_ABI = StatisticsABI;
 
 // Initialize clients
 export function createContractClients(env: any) {
@@ -105,7 +63,7 @@ export function createContractClients(env: any) {
 		console.error('BACKEND_PRIVATE_KEY is not set in environment variables');
 		throw new Error('Missing BACKEND_PRIVATE_KEY');
 	}
-	
+
 	// Create account from private key
 	const account = privateKeyToAccount(env.BACKEND_PRIVATE_KEY as `0x${string}`);
 
@@ -131,19 +89,19 @@ export function createContractClients(env: any) {
 	// Create contract instances
 	const gameFactory = getContract({
 		address: contractAddresses.GameFactory,
-		abi: GAME_FACTORY_ABI,
+		abi: GAME_FACTORY_ABI.abi,
 		client: { public: publicClient, wallet: walletClient },
 	});
 
 	const shipToken = getContract({
 		address: contractAddresses.SHIPToken,
-		abi: SHIP_TOKEN_ABI,
+		abi: SHIP_TOKEN_ABI.abi,
 		client: { public: publicClient, wallet: walletClient },
 	});
 
 	const statistics = getContract({
 		address: contractAddresses.BattleshipStatistics,
-		abi: STATISTICS_ABI,
+		abi: STATISTICS_ABI.abi,
 		client: { public: publicClient },
 	});
 
@@ -184,10 +142,8 @@ export class ContractGameService {
 				rpcUrl: this.env.BASE_RPC_URL || 'https://sepolia.base.org',
 				wsUrl: (this.env.BASE_RPC_URL || 'https://sepolia.base.org').replace('https://', 'wss://'),
 				gameFactoryAddress: contractAddresses.GameFactory,
-				gameFactoryABI: GAME_FACTORY_ABI,
-				gameABI: BATTLESHIP_GAME_ABI,
-				zkVerifierAddress: this.env.VERIFIER_ADDRESS || '',
-				zkVerifierABI: VERIFIER_ABI,
+				gameFactoryABI: GAME_FACTORY_ABI.abi,
+				gameABI: BATTLESHIP_GAME_ABI.abi,
 			},
 		};
 	}
@@ -207,23 +163,26 @@ export class ContractGameService {
 		transactionHash: `0x${string}`;
 	}> {
 		try {
-			let hash;
+			// Prepare args based on function version to call
+			const args = player2OrNull ? [player1OrSender, player2OrNull] : [player1OrSender];
 
-			// Determine which function to call based on the number of arguments
-			if (player2OrNull) {
-				// Call createGame(player1, player2)
-				hash = await this.clients.gameFactory.write.createGame([player1OrSender, player2OrNull]);
-			} else {
-				// Call createGame(opponent) where sender is player1
-				hash = await this.clients.gameFactory.write.createGame([player1OrSender]);
-			}
+			// Use the modern writeContract pattern
+			const hash = await this.clients.walletClient.writeContract({
+				address: this.clients.contractAddresses.GameFactory,
+				abi: GAME_FACTORY_ABI.abi,
+				functionName: 'createGame',
+				args,
+				account: this.clients.account,
+			});
 
 			// Wait for transaction receipt
-			const receipt = await this.clients.publicClient.waitForTransactionReceipt({ hash });
+			const receipt = await this.clients.publicClient.waitForTransactionReceipt({
+				hash,
+			});
 
 			// Parse events to get the game ID and contract address
 			const logs = parseEventLogs({
-				abi: GAME_FACTORY_ABI,
+				abi: GAME_FACTORY_ABI.abi,
 				logs: receipt.logs,
 			}) as any[];
 
@@ -234,7 +193,7 @@ export class ContractGameService {
 			}
 
 			const gameId = Number(gameCreatedEvent.args.gameId);
-			const gameContractAddress = gameCreatedEvent.args.gameContract;
+			const gameContractAddress = gameCreatedEvent.args.gameAddress;
 
 			if (player2OrNull) {
 				console.log(`Game created: ID=${gameId}, Contract=${gameContractAddress}, Players=${player1OrSender},${player2OrNull}`);
@@ -265,25 +224,29 @@ export class ContractGameService {
 		gameContractAddress: `0x${string}`;
 	}> {
 		try {
-			// Get the game contract address
-			const gameContractAddress = await this.clients.gameFactory.read.games([BigInt(gameId)]);
+			// Get the game contract address using readContract
+			const gameContractAddress = (await this.clients.publicClient.readContract({
+				address: this.clients.contractAddresses.GameFactory,
+				abi: GAME_FACTORY_ABI.abi,
+				functionName: 'games',
+				args: [BigInt(gameId)],
+			})) as `0x${string}`;
 
-			// Create game contract instance - ensuring address is correctly typed
-			const gameContract = getContract({
-				address: gameContractAddress as `0x${string}`,
-				abi: BATTLESHIP_GAME_ABI,
-				client: { public: this.clients.publicClient, wallet: this.clients.walletClient },
+			// Start the game using writeContract
+			const hash = await this.clients.walletClient.writeContract({
+				address: gameContractAddress,
+				abi: BATTLESHIP_GAME_ABI.abi,
+				functionName: 'startGame',
+				account: this.clients.account,
 			});
 
-			// Start the game
-			const hash = await gameContract.write.startGame();
 			await this.clients.publicClient.waitForTransactionReceipt({ hash });
 
 			console.log(`Game ${gameId} started at contract ${gameContractAddress}`);
 
 			return {
 				transactionHash: hash,
-				gameContractAddress: gameContractAddress as `0x${string}`,
+				gameContractAddress: gameContractAddress,
 			};
 		} catch (error) {
 			console.error('Error starting game:', error);
@@ -308,35 +271,45 @@ export class ContractGameService {
 		factoryTransactionHash: `0x${string}`;
 	}> {
 		try {
-			// Get game contract address
-			const gameContractAddress = await this.clients.gameFactory.read.games([BigInt(gameId)]);
+			// Get game contract address using readContract
+			const gameContractAddress = (await this.clients.publicClient.readContract({
+				address: this.clients.contractAddresses.GameFactory,
+				abi: GAME_FACTORY_ABI.abi,
+				functionName: 'games',
+				args: [BigInt(gameId)],
+			})) as `0x${string}`;
 
-			// Create game contract instance - ensuring address is correctly typed
-			const gameContract = getContract({
-				address: gameContractAddress as `0x${string}`,
-				abi: BATTLESHIP_GAME_ABI,
-				client: { public: this.clients.publicClient, wallet: this.clients.walletClient },
-			});
-
-			// Submit result to game contract
 			// Use zero address if winner is null
 			const winnerAddress = winner || ZERO_ADDRESS;
-			const gameHash = await gameContract.write.submitGameResult([winnerAddress, BigInt(totalShots), endReason]);
+
+			// Submit result to game contract using writeContract
+			const gameHash = await this.clients.walletClient.writeContract({
+				address: gameContractAddress,
+				abi: BATTLESHIP_GAME_ABI.abi,
+				functionName: 'submitGameResult',
+				args: [winnerAddress, BigInt(totalShots), endReason],
+				account: this.clients.account,
+			});
 
 			await this.clients.publicClient.waitForTransactionReceipt({ hash: gameHash });
 
-			// Calculate game duration
-			const createdAt = await gameContract.read.createdAt();
+			// Calculate game duration using readContract
+			const createdAt = (await this.clients.publicClient.readContract({
+				address: gameContractAddress,
+				abi: BATTLESHIP_GAME_ABI.abi,
+				functionName: 'createdAt',
+			})) as bigint;
+
 			const gameDuration = Math.floor(Date.now() / 1000) - Number(createdAt);
 
-			// Report to factory for statistics
-			const factoryHash = await this.clients.gameFactory.write.reportGameCompletion([
-				BigInt(gameId),
-				winnerAddress,
-				BigInt(gameDuration),
-				BigInt(totalShots),
-				endReason,
-			]);
+			// Report to factory for statistics using writeContract
+			const factoryHash = await this.clients.walletClient.writeContract({
+				address: this.clients.contractAddresses.GameFactory,
+				abi: GAME_FACTORY_ABI.abi,
+				functionName: 'reportGameCompletion',
+				args: [BigInt(gameId), winnerAddress, BigInt(gameDuration), BigInt(totalShots), endReason],
+				account: this.clients.account,
+			});
 
 			await this.clients.publicClient.waitForTransactionReceipt({ hash: factoryHash });
 
@@ -361,8 +334,13 @@ export class ContractGameService {
 	 */
 	async getPlayerStats(playerAddress: `0x${string}`) {
 		try {
-			// Cast the stats to proper type - it's an array of bigints
-			const stats = (await this.clients.statistics.read.getPlayerStats([playerAddress])) as bigint[];
+			// Use readContract pattern for cleaner contract reading
+			const stats = (await this.clients.publicClient.readContract({
+				address: this.clients.contractAddresses.BattleshipStatistics,
+				abi: STATISTICS_ABI.abi,
+				functionName: 'getPlayerStats',
+				args: [playerAddress],
+			})) as bigint[];
 
 			return {
 				totalGames: Number(stats[0]),
@@ -392,8 +370,12 @@ export class ContractGameService {
 	 */
 	async getGlobalStats() {
 		try {
-			// Cast the stats to proper type - it's an array of bigints
-			const stats = (await this.clients.statistics.read.getGlobalStats()) as bigint[];
+			// Use readContract pattern for cleaner contract reading
+			const stats = (await this.clients.publicClient.readContract({
+				address: this.clients.contractAddresses.BattleshipStatistics,
+				abi: STATISTICS_ABI.abi,
+				functionName: 'getGlobalStats',
+			})) as bigint[];
 
 			return {
 				totalGames: Number(stats[0]),
@@ -418,8 +400,13 @@ export class ContractGameService {
 	 */
 	async getRewardParams() {
 		try {
-			// Cast the params to proper type - it's a tuple of [bigint, bigint]
-			const params = (await this.clients.shipToken.read.getRewardParams()) as [bigint, bigint];
+			// Use readContract pattern for cleaner contract reading
+			const params = (await this.clients.publicClient.readContract({
+				address: this.clients.contractAddresses.SHIPToken,
+				abi: SHIP_TOKEN_ABI.abi,
+				functionName: 'getRewardParams',
+			})) as [bigint, bigint];
+
 			return {
 				participationReward: Number(params[0]),
 				victoryBonus: Number(params[1]),
@@ -438,8 +425,14 @@ export class ContractGameService {
 	 */
 	async canReceiveReward(playerAddress: `0x${string}`) {
 		try {
-			// Cast the result to proper type - it's a tuple of [boolean, string]
-			const result = (await this.clients.shipToken.read.canReceiveReward([playerAddress])) as [boolean, string];
+			// Use readContract pattern for cleaner contract reading
+			const result = (await this.clients.publicClient.readContract({
+				address: this.clients.contractAddresses.SHIPToken,
+				abi: SHIP_TOKEN_ABI.abi,
+				functionName: 'canReceiveReward',
+				args: [playerAddress],
+			})) as [boolean, string];
+
 			return {
 				canReceive: result[0],
 				reason: result[1],
@@ -459,7 +452,14 @@ export class ContractGameService {
 	 */
 	async getGameContract(gameId: number): Promise<`0x${string}`> {
 		try {
-			const address = await this.clients.gameFactory.read.games([BigInt(gameId)]);
+			// Use readContract pattern for cleaner contract reading
+			const address = await this.clients.publicClient.readContract({
+				address: this.clients.contractAddresses.GameFactory,
+				abi: GAME_FACTORY_ABI.abi,
+				functionName: 'games',
+				args: [BigInt(gameId)],
+			});
+
 			return address as `0x${string}`;
 		} catch (error) {
 			console.error('Error getting game contract:', error);
