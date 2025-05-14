@@ -624,17 +624,17 @@
                 logError('No active session');
                 return;
             }
-            
+
             if (gameState.ws) {
                 gameState.ws.close();
             }
-            
+
             const wsUrl = `${gameState.backendUrl.replace('http', 'ws')}/api/game-updates?sessionId=${gameState.sessionId}&address=${gameState.walletAddress}`;
             log(`Connecting to WebSocket: ${wsUrl}`);
             
             gameState.ws = new WebSocket(wsUrl);
             
-            gameState.ws.onopen = () => {
+            gameState.ws.onopen = (event) => {
                 logSuccess('WebSocket connected');
                 updateConnectionStatus();
             };
@@ -642,9 +642,12 @@
             gameState.ws.onmessage = (event) => {
                 try {
                     const message = JSON.parse(event.data);
+                    // Log only the raw WebSocket message
+                    console.log(message);
                     handleWebSocketMessage(message);
                 } catch (error) {
                     log(`Raw message: ${event.data}`);
+                    console.error(error);
                 }
             };
             
@@ -653,7 +656,7 @@
                 updateConnectionStatus();
             };
             
-            gameState.ws.onclose = () => {
+            gameState.ws.onclose = (event) => {
                 log('WebSocket disconnected');
                 updateConnectionStatus();
             };
@@ -661,23 +664,23 @@
         
         function handleWebSocketMessage(message) {
             log(`WebSocket message: ${message.type}`, 'info');
-            
+
             switch (message.type) {
                 case 'session_state':
                     updateGameState(message.data);
                     break;
-                    
+
                 case 'player_joined':
                     logSuccess(`Player joined: ${message.address}`);
                     gameState.players = message.players;
                     updateDisplay();
                     break;
-                    
+
                 case 'board_submitted':
                     logSuccess(`${message.player} submitted their board`);
                     updateGameState({ status: message.gameStatus });
                     break;
-                    
+
                 case 'game_started':
                     logSuccess('Game started!');
                     gameState.gameStatus = 'ACTIVE';
@@ -687,23 +690,26 @@
                     startTimers();
                     updateDisplay();
                     break;
-                    
+
                 case 'shot_fired':
                     handleShotFired(message);
                     break;
-                    
+
                 case 'ship_sunk':
                     logSuccess(`Ship sunk by ${message.player}!`);
                     gameState.statistics.yourSunk = message.sunkShips[gameState.walletAddress] || 0;
                     updateDisplay();
                     break;
-                    
+
                 case 'game_over':
                     handleGameOver(message);
                     break;
-                    
+
                 case 'chat':
                     log(`${message.sender}: ${message.text}`, 'info');
+                    break;
+
+                default:
                     break;
             }
         }
@@ -723,7 +729,7 @@
                 gameState.statistics.yourSunk = data.sunkShips[gameState.walletAddress] || 0;
                 gameState.statistics.enemySunk = data.sunkShips[getOpponentAddress()] || 0;
             }
-            
+
             updateDisplay();
             if (gameState.gameStatus === 'ACTIVE' && gameState.gameStartedAt) {
                 startTimers();
@@ -897,19 +903,20 @@
                 logError('Game is not active');
                 return;
             }
-            
+
             if (gameState.currentTurn !== gameState.walletAddress) {
                 logError('Not your turn');
                 return;
             }
-            
+
             if (gameState.enemyBoard[y][x] !== 0) {
                 logError('Already shot at this position');
                 return;
             }
-            
+
             try {
                 log(`Making shot at (${x}, ${y})`);
+
                 const response = await fetch(`${gameState.backendUrl}/api/sessions/${gameState.sessionId}/make-shot`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -919,13 +926,14 @@
                         y: y
                     })
                 });
-                
+
                 const data = await response.json();
+
                 if (data.success) {
                     // Update board visually
                     const cellIndex = y * 10 + x;
                     const cell = document.querySelectorAll('#enemyBoard .cell')[cellIndex];
-                    
+
                     if (data.isHit) {
                         cell.classList.add('hit');
                         cell.textContent = 'H';
@@ -936,7 +944,7 @@
                         cell.textContent = 'M';
                         gameState.enemyBoard[y][x] = 1; // miss
                     }
-                    
+
                     gameState.statistics.yourShots++;
                     updateDisplay();
                     logSuccess(`Shot ${data.isHit ? 'hit' : 'missed'}!`);
@@ -950,17 +958,17 @@
         
         function handleShotFired(message) {
             log(`Shot fired at (${message.x}, ${message.y}) by ${message.player}`);
-            
+
             // Update turn information
             gameState.currentTurn = message.nextTurn;
             gameState.turnStartedAt = message.turnStartedAt;
-            
+
             // Update enemy board if it was our opponent who shot
             if (message.player !== gameState.walletAddress) {
                 const cellIndex = message.y * 10 + message.x;
                 const cell = document.querySelectorAll('#playerBoard .cell')[cellIndex];
                 cell.classList.add('shot');
-                
+
                 if (message.isHit) {
                     cell.classList.add('hit');
                     gameState.statistics.enemyHits++;
@@ -969,7 +977,7 @@
                 }
                 gameState.statistics.enemyShots++;
             }
-            
+
             updateDisplay();
             resetTurnTimer();
         }
@@ -977,14 +985,14 @@
         function handleGameOver(message) {
             clearTimers();
             gameState.gameStatus = 'COMPLETED';
-            
+
             const isWinner = message.winner === gameState.walletAddress;
             if (isWinner) {
                 logSuccess(`🎉 You won the game! Reason: ${message.reason}`);
             } else {
                 log(`💔 You lost the game. Winner: ${message.winner}. Reason: ${message.reason}`, 'error');
             }
-            
+
             updateDisplay();
         }
         
