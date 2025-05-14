@@ -7,7 +7,7 @@
  * - Managing ongoing games
  * - Player actions
  */
-import { Env } from '../index';
+import { Env } from '../types';
 import { SessionCreateRequest } from '../types';
 
 /**

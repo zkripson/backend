@@ -72,6 +72,9 @@ export class PlayerProfile {
 				notifications: true,
 				theme: 'system',
 				boardLayout: null,
+				soundEnabled: false,
+				animationsEnabled: false,
+				autoSubmitOnHit: false,
 			},
 		};
 

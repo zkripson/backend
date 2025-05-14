@@ -6,7 +6,7 @@
  * - Game history
  * - Stats and preferences
  */
-import { Env } from '../index';
+import { Env } from '../types';
 
 /**
  * Main handler for player-related API requests

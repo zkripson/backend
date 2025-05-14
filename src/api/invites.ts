@@ -6,7 +6,7 @@
  * - Accepting invitations
  * - Checking invitation status
  */
-import { Env } from '../index';
+import { Env } from '../types';
 import { InvitationUpdate } from '../types';
 
 /**
