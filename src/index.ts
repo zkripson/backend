@@ -5,16 +5,18 @@
  * to the appropriate handler and manages Durable Object interactions.
  *
  * Features:
- * - 60-second turn timeouts
- * - 10-minute game maximum duration
+ * - 15-second turn timeouts
+ * - 3-minute game maximum duration
  * - Comprehensive error handling
  * - Performance monitoring
  * - Admin dashboard
  * - Health checks
+ * - Smart contract integration
  */
 import { handleSessionRequest } from './api/sessions';
 import { handlePlayerRequest } from './api/players';
 import { handleInviteRequest } from './api/invites';
+import { handleContractRequest } from './api/contracts';
 import { handleAdminRequest, createMonitoringDashboard } from './api/admin';
 import { ErrorHandler, ErrorCode } from './utils/errorMonitoring';
 
@@ -115,6 +117,10 @@ async function handleRequest(request: Request, env: Env, ctx: ExecutionContext, 
 		return handleInviteRequest(request, env, ctx);
 	}
 
+	if (path.startsWith('/api/contracts')) {
+		return handleContractRequest(request, env, ctx);
+	}
+
 	// Health check endpoint
 	if (path === '/health') {
 		return handleHealthCheck(env);
@@ -134,6 +140,11 @@ async function handleRequest(request: Request, env: Env, ctx: ExecutionContext, 
 					shipTracking: true,
 					errorMonitoring: true,
 					performanceMetrics: true,
+					smartContracts: true,
+					blockchain: {
+						network: env.NETWORK === 'base' ? 'Base Mainnet' : 'Base Sepolia', 
+						chainId: env.NETWORK === 'base' ? 8453 : 84532,
+					},
 				},
 				timestamp: Date.now(),
 				requestId,
@@ -230,7 +241,9 @@ async function handleHealthCheck(env: Env): Promise<Response> {
 		checks: {
 			durableObjects: true,
 			baseSepolia: !!env.BASE_SEPOLIA_RPC_URL,
+			contracts: true,
 		},
+		contractApi: '/api/contracts/health',
 	};
 
 	return new Response(JSON.stringify(health), {

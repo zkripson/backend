@@ -377,6 +377,8 @@ export class ContractGameService {
 				functionName: 'getGlobalStats',
 			})) as bigint[];
 
+			console.log('Global stats:', stats);
+
 			return {
 				totalGames: Number(stats[0]),
 				totalPlayers: Number(stats[1]),
