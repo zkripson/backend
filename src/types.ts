@@ -10,6 +10,8 @@ export interface SessionData {
 	turnStartedAt: number | null;
 	playerBoardsArray?: [string, string][];
 }
+// Cloudflare Workers specific types
+export type TimeoutId = number; // In Workers, setTimeout returns a number
 
 export interface GameData {
 	gameStartedAt: number | null;

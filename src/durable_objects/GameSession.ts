@@ -1,22 +1,21 @@
 /**
- * GameSession Durable Object - Simplified Production Grade
+ * GameSession Durable Object - Updated with Contract Integration
  *
- * Manages the state of an active game session with backend gameplay:
- * - 60-second turn timeouts
- * - 10-minute game maximum duration
- * - Backend game logic (no contract monitoring)
- * - Automatic winner determination based on sunk ships
+ * Now includes:
+ * - Smart contract interactions for game lifecycle
+ * - Automatic reward distribution
+ * - On-chain statistics reporting
+ * - Contract event monitoring
  */
-import { ForfeitRequest, JoinRequest, SessionData, StartRequest, SubmitBoardRequest, Shot } from '../types';
+import { ForfeitRequest, JoinRequest, SessionData, StartRequest, SubmitBoardRequest, Shot, TimeoutId } from '../types';
 import { ShipTracker, Ship, Board } from '../utils/shipTracker';
 import { ErrorHandler, ErrorCode, GameValidator, PerformanceMonitor } from '../utils/errorMonitoring';
-
-// Define TimeoutId type for Cloudflare Workers environment
-type TimeoutId = ReturnType<typeof setTimeout>;
+import { ContractGameService } from '../services/contractService';
 
 export class GameSession {
 	private state: DurableObjectState;
 	private env: any;
+	private contractService: ContractGameService;
 
 	// Session data
 	private sessionId: string = '';
@@ -24,19 +23,19 @@ export class GameSession {
 	private players: string[] = [];
 	private playerConnections: Map<string, WebSocket> = new Map();
 	private gameContractAddress: string | null = null;
-	private gameId: string | null = null;
+	private gameId: number | null = null;
 	private createdAt: number = Date.now();
 	private lastActivityAt: number = Date.now();
 	private gameStartedAt: number | null = null;
 	private currentTurn: string | null = null;
 	private turnStartedAt: number | null = null;
-	private forfeitTimeout: TimeoutId | null = null;
-	private gameTimeout: TimeoutId | null = null;
-	private playerBoards: Map<string, Board> = new Map(); // Store actual board data
+	private turnTimeoutId: TimeoutId | null = null;
+	private gameTimeoutId: TimeoutId | null = null;
+	private playerBoards: Map<string, Board> = new Map();
 
 	// Enhanced game tracking
 	private shots: Shot[] = [];
-	private totalShips: number = 5; // Standard battleship has 5 ships
+	private totalShips: number = 5;
 
 	// Constants
 	private readonly TURN_TIMEOUT_MS = 15 * 1000; // 15 seconds
@@ -45,6 +44,7 @@ export class GameSession {
 	constructor(state: DurableObjectState, env: any) {
 		this.state = state;
 		this.env = env;
+		this.contractService = new ContractGameService(env);
 
 		// Load session data on startup
 		this.state.blockConcurrencyWhile(async () => {
@@ -91,103 +91,6 @@ export class GameSession {
 		}
 
 		return new Response('Not Found', { status: 404 });
-	}
-
-	// WebSocket connection handling
-	private async handleWebSocketConnection(request: Request): Promise<Response> {
-		const address = new URL(request.url).searchParams.get('address');
-
-		if (!address) {
-			return new Response('Missing player address', { status: 400 });
-		}
-
-		// Validate player is part of this game
-		if (!this.players.includes(address) && this.players.length >= 2) {
-			return new Response('Not a player in this game session', { status: 403 });
-		}
-
-		// Accept the WebSocket connection
-		const pair = new WebSocketPair();
-		const [client, server] = Object.values(pair);
-
-		server.accept();
-		this.playerConnections.set(address, server);
-
-		// Set up message handlers
-		server.addEventListener('message', async (event) => {
-			try {
-				await this.handleWebSocketMessage(address, event);
-			} catch (error) {
-				console.error('Error handling WebSocket message:', error);
-				this.sendToPlayer(address, {
-					type: 'error',
-					error: 'Invalid message format',
-				});
-			}
-		});
-
-		// Handle disconnection
-		server.addEventListener('close', () => {
-			this.playerConnections.delete(address);
-		});
-
-		// Send initial state
-		this.sendToPlayer(address, {
-			type: 'session_state',
-			data: this.getGameState(),
-		});
-
-		// Send game history to reconnecting players
-		if (this.status === 'ACTIVE' && this.shots.length > 0) {
-			this.sendToPlayer(address, {
-				type: 'game_history',
-				shots: this.shots,
-			});
-		}
-
-		return new Response(null, {
-			status: 101,
-			webSocket: client,
-		});
-	}
-
-	// Handle WebSocket messages from clients
-	private async handleWebSocketMessage(address: string, event: MessageEvent): Promise<void> {
-		let message: { type: string; text?: string };
-
-		if (typeof event.data === 'string') {
-			message = JSON.parse(event.data) as { type: string; text?: string };
-		} else if (event.data instanceof ArrayBuffer) {
-			const textDecoder = new TextDecoder('utf-8');
-			const jsonString = textDecoder.decode(event.data);
-			message = JSON.parse(jsonString) as { type: string; text?: string };
-		} else {
-			throw new Error('Unsupported message format');
-		}
-
-		this.lastActivityAt = Date.now();
-
-		switch (message.type) {
-			case 'chat':
-				this.broadcastToAll({
-					type: 'chat',
-					sender: address,
-					text: message.text,
-					timestamp: Date.now(),
-				});
-				break;
-
-			case 'ping':
-				this.sendToPlayer(address, { type: 'pong', timestamp: Date.now() });
-				break;
-
-			case 'request_game_state':
-				this.sendToPlayer(address, {
-					type: 'session_state',
-					data: this.getGameState(),
-				});
-				break;
-		}
 	}
 
 	// Initialize a new game session
@@ -254,6 +157,9 @@ export class GameSession {
 						this.players.push(playerAddress);
 						this.status = 'WAITING';
 
+						// Create the on-chain game now that we have both players
+						await this.createOnChainGame();
+
 						await this.saveSessionData();
 
 						this.broadcastToAll({
@@ -261,6 +167,8 @@ export class GameSession {
 							address: playerAddress,
 							players: this.players,
 							status: this.status,
+							gameContractAddress: this.gameContractAddress,
+							gameId: this.gameId,
 						});
 					}
 
@@ -270,6 +178,8 @@ export class GameSession {
 							sessionId: this.sessionId,
 							status: this.status,
 							players: this.players,
+							gameContractAddress: this.gameContractAddress,
+							gameId: this.gameId,
 						}),
 						{ headers: { 'Content-Type': 'application/json' } }
 					);
@@ -281,41 +191,24 @@ export class GameSession {
 		);
 	}
 
-	// Register game contract (still needed for final result submission)
-	private async handleRegisterContract(request: Request): Promise<Response> {
+	// Create game on smart contract when both players join
+	private async createOnChainGame(): Promise<void> {
 		try {
-			const data = (await request.json()) as StartRequest;
-
-			if (!data.gameId || !data.gameContractAddress) {
-				throw ErrorHandler.createError(
-					ErrorCode.VALIDATION_FAILED,
-					'Game ID and contract address are required',
-					{},
-					{ sessionId: this.sessionId }
-				);
+			if (this.players.length !== 2) {
+				throw new Error('Need exactly 2 players to create on-chain game');
 			}
 
-			this.gameContractAddress = data.gameContractAddress;
-			this.gameId = data.gameId;
+			console.log(`Creating on-chain game for session ${this.sessionId}`);
 
-			await this.saveSessionData();
+			const result = await this.contractService.createGame(this.players[0] as `0x${string}`, this.players[1] as `0x${string}`);
 
-			this.broadcastToAll({
-				type: 'contract_registered',
-				gameContractAddress: this.gameContractAddress,
-				gameId: this.gameId,
-			});
+			this.gameId = result.gameId;
+			this.gameContractAddress = result.gameContractAddress;
 
-			return new Response(
-				JSON.stringify({
-					success: true,
-					gameContractAddress: this.gameContractAddress,
-					gameId: this.gameId,
-				}),
-				{ headers: { 'Content-Type': 'application/json' } }
-			);
+			console.log(`Created on-chain game: ID=${this.gameId}, Contract=${this.gameContractAddress}`);
 		} catch (error) {
-			return ErrorHandler.handleError(error, { sessionId: this.sessionId });
+			console.error('Error creating on-chain game:', error);
+			throw new Error(`Failed to create on-chain game: ${error instanceof Error ? error.message : String(error)}`);
 		}
 	}
 
@@ -398,7 +291,41 @@ export class GameSession {
 		);
 	}
 
-	// Handle shot making (backend gameplay)
+	// Start the game (both locally and on-chain)
+	private async startGame(): Promise<void> {
+		try {
+			// Start game on smart contract if we have the game ID
+			if (this.gameId !== null) {
+				console.log(`Starting game ${this.gameId} on-chain...`);
+				await this.contractService.startGame(this.gameId);
+			}
+
+			this.status = 'ACTIVE';
+			this.gameStartedAt = Date.now();
+			this.currentTurn = this.players[0];
+			this.turnStartedAt = Date.now();
+
+			// Schedule timeouts
+			this.scheduleTurnTimeout();
+			this.scheduleGameTimeout();
+
+			await this.saveSessionData();
+
+			this.broadcastToAll({
+				type: 'game_started',
+				status: this.status,
+				currentTurn: this.currentTurn,
+				gameStartedAt: this.gameStartedAt,
+				turnStartedAt: this.turnStartedAt,
+				gameId: this.gameId,
+				gameContractAddress: this.gameContractAddress,
+			});
+		} catch (error) {
+			console.error('Error starting game:', error);
+			throw error;
+		}
+	}
+
 	// Handle shot making (backend gameplay)
 	private async handleMakeShotRequest(request: Request): Promise<Response> {
 		return PerformanceMonitor.trackOperation(
@@ -433,12 +360,8 @@ export class GameSession {
 						);
 					}
 
-					// FIXED: Check if THIS player has already shot at this position on their OPPONENT'S board
-					// We need to track shots per player against their target, not globally
-					const alreadyShot = this.shots.some(
-						(shot) => shot.x === x && shot.y === y && shot.player === playerAddress // Only check shots made by current player
-						// Note: We don't need to check target player because each player shoots at their opponent
-					);
+					// Check if already shot at this location
+					const alreadyShot = this.shots.some((shot) => shot.x === x && shot.y === y && shot.player === playerAddress);
 
 					if (alreadyShot) {
 						throw ErrorHandler.createError(
@@ -474,7 +397,7 @@ export class GameSession {
 
 					// Update game state
 					if (result.isHit) {
-						// Player gets another turn for hitting (optional rule - you can change this)
+						// Player gets another turn for hitting
 						this.scheduleTurnTimeout();
 					} else {
 						// Switch turns on miss
@@ -531,9 +454,73 @@ export class GameSession {
 		);
 	}
 
-	// Handle status request
-	private handleStatusRequest(): Response {
-		return new Response(JSON.stringify(this.getGameState()), { headers: { 'Content-Type': 'application/json' } });
+	// End the game and handle on-chain reporting
+	private async endGame(winner: string | null, reason: 'COMPLETED' | 'FORFEIT' | 'TIMEOUT' | 'TIME_LIMIT'): Promise<void> {
+		try {
+			this.status = 'COMPLETED';
+
+			// Clear all timeouts
+			if (this.turnTimeoutId !== null) {
+				clearTimeout(this.turnTimeoutId);
+				this.turnTimeoutId = null;
+			}
+			if (this.gameTimeoutId !== null) {
+				clearTimeout(this.gameTimeoutId);
+				this.gameTimeoutId = null;
+			}
+
+			await this.saveSessionData();
+
+			// Send final game state
+			this.broadcastToAll({
+				type: 'game_over',
+				status: this.status,
+				winner: winner,
+				reason: reason,
+				finalState: {
+					shots: this.shots,
+					sunkShips: this.getSunkShipsCount(),
+					gameStartedAt: this.gameStartedAt,
+					gameEndedAt: Date.now(),
+				},
+			});
+
+			// Submit final result to contract
+			if (this.gameId !== null && this.gameContractAddress) {
+				await this.submitGameResultToContract(winner, reason);
+			}
+		} catch (error) {
+			console.error('Error ending game:', error);
+			throw error;
+		}
+	}
+
+	// Submit game result to smart contract
+	private async submitGameResultToContract(winner: string | null, reason: string): Promise<void> {
+		try {
+			if (this.gameId === null) {
+				console.warn('No game ID available, skipping contract submission');
+				return;
+			}
+
+			const endReasonMap: Record<string, string> = {
+				COMPLETED: 'completed',
+				FORFEIT: 'forfeit',
+				TIMEOUT: 'timeout',
+				TIME_LIMIT: 'time_limit',
+			};
+
+			const totalShots = this.shots.length;
+			const endReason = endReasonMap[reason] || 'unknown';
+
+			console.log(`Submitting game result to contract: gameId=${this.gameId}, winner=${winner}, reason=${endReason}`);
+
+			await this.contractService.completeGame(this.gameId, winner as `0x${string}` | null, totalShots, endReason);
+
+			console.log(`Successfully submitted game result for game ${this.gameId}`);
+		} catch (error) {
+			console.error('Failed to submit game result to contract:', error);
+		}
 	}
 
 	// Handle forfeit request
@@ -569,98 +556,27 @@ export class GameSession {
 		}
 	}
 
-	// Start the game
-	private async startGame(): Promise<void> {
-		this.status = 'ACTIVE';
-		this.gameStartedAt = Date.now();
-		this.currentTurn = this.players[0];
-		this.turnStartedAt = Date.now();
-
-		// Schedule timeouts
-		this.scheduleTurnTimeout();
-		this.scheduleGameTimeout();
-
-		await this.saveSessionData();
-
-		this.broadcastToAll({
-			type: 'game_started',
-			status: this.status,
-			currentTurn: this.currentTurn,
-			gameStartedAt: this.gameStartedAt,
-			turnStartedAt: this.turnStartedAt,
-		});
-	}
-
-	// End the game
-	private async endGame(winner: string | null, reason: 'COMPLETED' | 'FORFEIT' | 'TIMEOUT' | 'TIME_LIMIT'): Promise<void> {
-		this.status = 'COMPLETED';
-
-		// Clear all timeouts
-		if (this.forfeitTimeout !== null) {
-			clearTimeout(this.forfeitTimeout);
-			this.forfeitTimeout = null;
-		}
-		if (this.gameTimeout !== null) {
-			clearTimeout(this.gameTimeout);
-			this.gameTimeout = null;
-		}
-
-		await this.saveSessionData();
-
-		// Send final game state
-		this.broadcastToAll({
-			type: 'game_over',
-			status: this.status,
-			winner: winner,
-			reason: reason,
-			finalState: {
-				shots: this.shots,
-				sunkShips: this.getSunkShipsCount(),
-				gameStartedAt: this.gameStartedAt,
-				gameEndedAt: Date.now(),
-			},
-		});
-
-		// Submit final result to contract (if configured)
-		if (this.gameContractAddress && this.gameId) {
-			await this.submitGameResultToContract(winner, reason);
-		}
-	}
-
-	// Submit game result to contract
-	private async submitGameResultToContract(winner: string | null, reason: string): Promise<void> {
-		try {
-			// This would submit the final result to MegaETH
-			// Implementation would use the contract's submitGameResult function
-			console.log(`Submitting game result: winner=${winner}, reason=${reason}`);
-		} catch (error) {
-			console.error('Failed to submit game result to contract:', error);
-		}
-	}
-
-	// Schedule turn timeout (60 seconds)
+	// Schedule turn timeout
 	private scheduleTurnTimeout(): void {
-		if (this.forfeitTimeout !== null) {
-			clearTimeout(this.forfeitTimeout);
+		if (this.turnTimeoutId !== null) {
+			clearTimeout(this.turnTimeoutId);
 		}
 
-		this.forfeitTimeout = setTimeout(async () => {
+		this.turnTimeoutId = setTimeout(async () => {
 			if (this.status === 'ACTIVE' && this.currentTurn && this.turnStartedAt) {
 				const currentTime = Date.now();
 				const turnDuration = currentTime - this.turnStartedAt;
 
 				if (turnDuration >= this.TURN_TIMEOUT_MS) {
-					// FIXED: Switch turn to opponent instead of ending game
+					// Switch turn to opponent instead of ending game
 					const nextPlayer = this.players.find((p) => p !== this.currentTurn);
 
 					if (nextPlayer) {
 						this.currentTurn = nextPlayer;
 						this.turnStartedAt = Date.now();
 
-						// Save updated state
 						await this.saveSessionData();
 
-						// Broadcast turn switch due to timeout
 						this.broadcastToAll({
 							type: 'turn_timeout',
 							previousPlayer: this.currentTurn === this.players[0] ? this.players[1] : this.players[0],
@@ -669,7 +585,6 @@ export class GameSession {
 							message: 'Turn timed out, switching to opponent',
 						});
 
-						// Schedule next turn timeout
 						this.scheduleTurnTimeout();
 					}
 				}
@@ -677,17 +592,15 @@ export class GameSession {
 		}, this.TURN_TIMEOUT_MS);
 	}
 
-	// Schedule game timeout (10 minutes)
+	// Schedule game timeout
 	private scheduleGameTimeout(): void {
-		if (this.gameTimeout !== null) {
-			clearTimeout(this.gameTimeout);
+		if (this.gameTimeoutId !== null) {
+			clearTimeout(this.gameTimeoutId);
 		}
 
-		this.gameTimeout = setTimeout(async () => {
+		this.gameTimeoutId = setTimeout(async () => {
 			if (this.status === 'ACTIVE' && this.gameStartedAt) {
 				GameValidator.validateTimeout(this.sessionId, this.gameStartedAt, this.GAME_TIMEOUT_MS, 'Game');
-
-				// Game time limit reached - determine winner based on sunk ships
 				await this.determineWinnerByShips();
 			}
 		}, this.GAME_TIMEOUT_MS);
@@ -705,8 +618,7 @@ export class GameSession {
 				maxSunkShips = sunkCount;
 				winner = player;
 			} else if (sunkCount === maxSunkShips) {
-				// Tie - no winner
-				winner = null;
+				winner = null; // Tie
 			}
 		}
 
@@ -722,7 +634,7 @@ export class GameSession {
 			if (board) {
 				sunkShipsCount[player] = board.ships.filter((ship) => ship.isSunk).length;
 			} else {
-				sunkShipsCount[player] = 0; // Default value if board doesn't exist
+				sunkShipsCount[player] = 0;
 			}
 		}
 
@@ -746,11 +658,15 @@ export class GameSession {
 				if (remaining > 0) {
 					this.scheduleGameTimeout();
 				} else {
-					// Game should have ended already
 					this.determineWinnerByShips();
 				}
 			}
 		}
+	}
+
+	// Handle status request
+	private handleStatusRequest(): Response {
+		return new Response(JSON.stringify(this.getGameState()), { headers: { 'Content-Type': 'application/json' } });
 	}
 
 	// Get current game state
@@ -760,7 +676,7 @@ export class GameSession {
 		players: string[];
 		currentTurn: string | null;
 		gameContractAddress: string | null;
-		gameId: string | null;
+		gameId: number | null;
 		gameStartedAt: number | null;
 		turnStartedAt: number | null;
 		createdAt: number;
@@ -792,6 +708,99 @@ export class GameSession {
 		};
 	}
 
+	// WebSocket connection handling
+	private async handleWebSocketConnection(request: Request): Promise<Response> {
+		const address = new URL(request.url).searchParams.get('address');
+
+		if (!address) {
+			return new Response('Missing player address', { status: 400 });
+		}
+
+		if (!this.players.includes(address) && this.players.length >= 2) {
+			return new Response('Not a player in this game session', { status: 403 });
+		}
+
+		const pair = new WebSocketPair();
+		const [client, server] = Object.values(pair);
+
+		server.accept();
+		this.playerConnections.set(address, server);
+
+		server.addEventListener('message', async (event) => {
+			try {
+				await this.handleWebSocketMessage(address, event);
+			} catch (error) {
+				console.error('Error handling WebSocket message:', error);
+				this.sendToPlayer(address, {
+					type: 'error',
+					error: 'Invalid message format',
+				});
+			}
+		});
+
+		server.addEventListener('close', () => {
+			this.playerConnections.delete(address);
+		});
+
+		// Send initial state
+		this.sendToPlayer(address, {
+			type: 'session_state',
+			data: this.getGameState(),
+		});
+
+		// Send game history to reconnecting players
+		if (this.status === 'ACTIVE' && this.shots.length > 0) {
+			this.sendToPlayer(address, {
+				type: 'game_history',
+				shots: this.shots,
+			});
+		}
+
+		return new Response(null, {
+			status: 101,
+			webSocket: client,
+		});
+	}
+
+	// Handle WebSocket messages from clients
+	private async handleWebSocketMessage(address: string, event: MessageEvent): Promise<void> {
+		let message: { type: string; text?: string };
+
+		if (typeof event.data === 'string') {
+			message = JSON.parse(event.data) as { type: string; text?: string };
+		} else if (event.data instanceof ArrayBuffer) {
+			const textDecoder = new TextDecoder('utf-8');
+			const jsonString = textDecoder.decode(event.data);
+			message = JSON.parse(jsonString) as { type: string; text?: string };
+		} else {
+			throw new Error('Unsupported message format');
+		}
+
+		this.lastActivityAt = Date.now();
+
+		switch (message.type) {
+			case 'chat':
+				this.broadcastToAll({
+					type: 'chat',
+					sender: address,
+					text: message.text,
+					timestamp: Date.now(),
+				});
+				break;
+
+			case 'ping':
+				this.sendToPlayer(address, { type: 'pong', timestamp: Date.now() });
+				break;
+
+			case 'request_game_state':
+				this.sendToPlayer(address, {
+					type: 'session_state',
+					data: this.getGameState(),
+				});
+				break;
+		}
+	}
+
 	// Save session data to durable storage
 	private async saveSessionData(): Promise<void> {
 		const sessionData: SessionData = {
@@ -799,7 +808,7 @@ export class GameSession {
 			status: this.status,
 			players: this.players,
 			gameContractAddress: this.gameContractAddress,
-			gameId: this.gameId,
+			gameId: this.gameId ? this.gameId.toString() : null,
 			createdAt: this.createdAt,
 			lastActivityAt: this.lastActivityAt,
 			currentTurn: this.currentTurn,
@@ -807,7 +816,6 @@ export class GameSession {
 			playerBoardsArray: Array.from(this.playerBoards.entries()).map(([player, board]) => [player, JSON.stringify(board)]),
 		};
 
-		// Save additional game data
 		await this.state.storage.put('sessionData', sessionData);
 		await this.state.storage.put('gameData', {
 			gameStartedAt: this.gameStartedAt,
@@ -828,13 +836,12 @@ export class GameSession {
 			this.status = sessionData.status;
 			this.players = sessionData.players;
 			this.gameContractAddress = sessionData.gameContractAddress;
-			this.gameId = sessionData.gameId;
+			this.gameId = sessionData.gameId ? parseInt(sessionData.gameId) : null;
 			this.createdAt = sessionData.createdAt;
 			this.lastActivityAt = sessionData.lastActivityAt;
 			this.currentTurn = sessionData.currentTurn;
 			this.turnStartedAt = sessionData.turnStartedAt;
 
-			// Properly reconstruct the playerBoards Map
 			this.playerBoards = new Map();
 			if (sessionData.playerBoardsArray && Array.isArray(sessionData.playerBoardsArray)) {
 				for (const [player, boardJson] of sessionData.playerBoardsArray) {
@@ -875,6 +882,31 @@ export class GameSession {
 			} catch (error) {
 				console.error(`Error sending message to player ${address}:`, error);
 			}
+		}
+	}
+
+	// Register contract (for backward compatibility)
+	private async handleRegisterContract(request: Request): Promise<Response> {
+		try {
+			const data = (await request.json()) as { gameId: string; gameContractAddress: string };
+
+			// This is now handled automatically when players join
+			// But we keep this endpoint for compatibility
+			this.gameId = parseInt(data.gameId);
+			this.gameContractAddress = data.gameContractAddress;
+
+			await this.saveSessionData();
+
+			return new Response(
+				JSON.stringify({
+					success: true,
+					gameContractAddress: this.gameContractAddress,
+					gameId: this.gameId,
+				}),
+				{ headers: { 'Content-Type': 'application/json' } }
+			);
+		} catch (error) {
+			return ErrorHandler.handleError(error, { sessionId: this.sessionId });
 		}
 	}
 }

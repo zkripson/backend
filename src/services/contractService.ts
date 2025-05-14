@@ -100,6 +100,12 @@ export const VERIFIER_ABI = [
 
 // Initialize clients
 export function createContractClients(env: any) {
+	// Check for required private key
+	if (!env.BACKEND_PRIVATE_KEY) {
+		console.error('BACKEND_PRIVATE_KEY is not set in environment variables');
+		throw new Error('Missing BACKEND_PRIVATE_KEY');
+	}
+	
 	// Create account from private key
 	const account = privateKeyToAccount(env.BACKEND_PRIVATE_KEY as `0x${string}`);
 
@@ -158,7 +164,13 @@ export class ContractGameService {
 
 	constructor(env: any) {
 		this.env = env;
-		this.clients = createContractClients(env);
+		try {
+			console.log('Creating contract clients with RPC URL:', env.BASE_RPC_URL);
+			this.clients = createContractClients(env);
+		} catch (error) {
+			console.error('Failed to create contract clients:', error);
+			throw error;
+		}
 	}
 
 	/**
@@ -168,7 +180,7 @@ export class ContractGameService {
 		const contractAddresses = getContractAddresses(this.env);
 
 		return {
-			megaEthConfig: {
+			baseSepolia: {
 				rpcUrl: this.env.BASE_RPC_URL || 'https://sepolia.base.org',
 				wsUrl: (this.env.BASE_RPC_URL || 'https://sepolia.base.org').replace('https://', 'wss://'),
 				gameFactoryAddress: contractAddresses.GameFactory,
@@ -340,35 +352,6 @@ export class ContractGameService {
 				ErrorCode.CONTRACT_ERROR,
 				`Failed to complete game: ${error instanceof Error ? error.message : String(error)}`,
 				{ gameId, winner, endReason }
-			);
-		}
-	}
-
-	/**
-	 * Distribute rewards to players
-	 */
-	async distributeRewards(
-		rewards: Array<{
-			player: `0x${string}`;
-			isWinner: boolean;
-			gameId: number;
-		}>
-	): Promise<`0x${string}`> {
-		try {
-			// Convert to format expected by contract
-			const rewardData = rewards.map((r) => [r.player, r.isWinner, BigInt(r.gameId)] as const);
-
-			const hash = await this.clients.shipToken.write.mintBatchRewards([rewardData]);
-			await this.clients.publicClient.waitForTransactionReceipt({ hash });
-
-			console.log(`Distributed rewards for ${rewards.length} players`);
-			return hash;
-		} catch (error) {
-			console.error('Error distributing rewards:', error);
-			throw ErrorHandler.createError(
-				ErrorCode.CONTRACT_ERROR,
-				`Failed to distribute rewards: ${error instanceof Error ? error.message : String(error)}`,
-				{ rewardCount: rewards.length }
 			);
 		}
 	}

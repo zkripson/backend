@@ -1,32 +1,94 @@
-name = "zk-battleship-backend"
+# Cloudflare Workers Configuration for ZK Battleship Backend
+name = "zkbattleship-backend"
 main = "src/index.ts"
-compatibility_date = "2025-04-01"
-compatibility_flags = ["durable_object_alarms"]
+compatibility_date = "2024-01-01"
+compatibility_flags = ["nodejs_compat"]
 
-# Environment variables
-[vars]
-MEGAETH_RPC_URL = "https://carrot.megaeth.com/rpc"
-GAME_FACTORY_ADDRESS = "0xGameFactoryAddressGoesHere"
+# Environment variables from .env file
+[env.development.vars]
+ENVIRONMENT = "development"
+LOG_LEVEL = "debug"
+BASE_RPC_URL = "https://sepolia.base.org"
+BASE_CHAIN_ID = "84532"
+
+# Contract addresses (Base Sepolia)
+GAME_FACTORY_ADDRESS = "0x4D649D9EeF8f902CA0585F0822182363A5C0B19D"
+BATTLESHIP_STATISTICS_ADDRESS = "0xdDC03eD3BFd6d4f39D685E93313601d68B832930"
+SHIP_TOKEN_ADDRESS = "0xECD81000150F2A039Dd45cdc8Fa3832518C51Bf2"
+BACKEND_ADDRESS = "0x459D7FB72ac3dFB0666227B30F25A424A5583E9c"
 
 # Durable Object bindings
-[[durable_objects.bindings]]
+[[env.development.durable_objects.bindings]]
 name = "GAME_SESSIONS"
 class_name = "GameSession"
+script_name = "zkbattleship-backend"
 
-[[durable_objects.bindings]]
+[[env.development.durable_objects.bindings]]
 name = "PLAYER_PROFILES"
 class_name = "PlayerProfile"
+script_name = "zkbattleship-backend"
 
-[[durable_objects.bindings]]
-name = "INVITE_MANAGER" 
+[[env.development.durable_objects.bindings]]
+name = "INVITE_MANAGER"
 class_name = "InviteManager"
+script_name = "zkbattleship-backend"
 
-# Durable Object migrations
-[[migrations]]
-tag = "v1"
-new_classes = ["GameSession", "PlayerProfile", "InviteManager"]
+# Production environment
+[env.production.vars]
+ENVIRONMENT = "production"
+LOG_LEVEL = "info"
+BASE_RPC_URL = "https://sepolia.base.org"
+BASE_CHAIN_ID = "84532"
 
-# Migrations to use SQLite backend for storage (optional)
-# [[migrations]]
-# tag = "v2"
-# new_sqlite_classes = ["GameSession", "PlayerProfile", "InviteManager"]
+# Same contract addresses for production (using testnet for now)
+GAME_FACTORY_ADDRESS = "0x4D649D9EeF8f902CA0585F0822182363A5C0B19D"
+BATTLESHIP_STATISTICS_ADDRESS = "0xdDC03eD3BFd6d4f39D685E93313601d68B832930"
+SHIP_TOKEN_ADDRESS = "0xECD81000150F2A039Dd45cdc8Fa3832518C51Bf2"
+BACKEND_ADDRESS = "0x459D7FB72ac3dFB0666227B30F25A424A5583E9c"
+
+# Production Durable Object bindings
+[[env.production.durable_objects.bindings]]
+name = "GAME_SESSIONS"
+class_name = "GameSession"
+script_name = "zkbattleship-backend"
+
+[[env.production.durable_objects.bindings]]
+name = "PLAYER_PROFILES"
+class_name = "PlayerProfile"
+script_name = "zkbattleship-backend"
+
+[[env.production.durable_objects.bindings]]
+name = "INVITE_MANAGER"
+class_name = "InviteManager"
+script_name = "zkbattleship-backend"
+
+# KV namespaces (optional, for caching)
+[[env.development.kv_namespaces]]
+binding = "GAME_CACHE"
+id = "your_kv_namespace_id_here"
+preview_id = "your_preview_kv_namespace_id_here"
+
+[[env.production.kv_namespaces]]
+binding = "GAME_CACHE"
+id = "your_production_kv_namespace_id_here"
+
+# Worker limits and configuration
+[limits]
+cpu_ms = 50  # 50ms CPU time per request
+
+# Route configuration (optional)
+# [[env.development.routes]]
+# pattern = "zkbattleship-api-dev.your-domain.com/*"
+# zone_name = "your-domain.com"
+
+# [[env.production.routes]]
+# pattern = "zkbattleship-api.your-domain.com/*"
+# zone_name = "your-domain.com"
+
+# Analytics and logging
+[observability]
+enabled = true
+
+# Secrets (set via wrangler secret put)
+# BACKEND_PRIVATE_KEY - The private key for contract interactions
+# ADMIN_ACCESS_TOKEN - Token for admin endpoints

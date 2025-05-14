@@ -50,11 +50,6 @@ export async function handleContractRequest(request: Request, env: Env, ctx: Exe
 		return handleGetGameContract(request, env);
 	}
 
-	// Health check for contract connectivity
-	if (path.endsWith('/api/contracts/health')) {
-		return handleContractHealth(env);
-	}
-
 	// Default not found response
 	return new Response(JSON.stringify({ error: 'Endpoint not found' }), {
 		status: 404,
@@ -328,94 +323,5 @@ async function handleGetGameContract(request: Request, env: Env): Promise<Respon
 	} catch (error: unknown) {
 		console.error('Error getting game contract address:', error);
 		return ErrorHandler.handleError(error);
-	}
-}
-
-/**
- * Handle GET /api/contracts/health - Check contract connectivity
- */
-async function handleContractHealth(env: Env): Promise<Response> {
-	const contractAddresses = getContractAddresses(env);
-	const checks: Record<string, boolean> = {};
-
-	try {
-		const contractService = new ContractGameService(env);
-
-		// Test basic connectivity by trying to get global stats
-		try {
-			const stats = await contractService.getGlobalStats();
-			checks.statistics = true;
-			checks.connectivity = true;
-		} catch (error) {
-			console.error('Statistics contract check failed:', error);
-			checks.statistics = false;
-			checks.connectivity = false;
-		}
-
-		// Test reward contract
-		try {
-			await contractService.getRewardParams();
-			checks.rewards = true;
-		} catch (error) {
-			console.error('Rewards contract check failed:', error);
-			checks.rewards = false;
-		}
-
-		// Test factory contract by checking if we can read games mapping
-		try {
-			// Try to get a non-existent game (should not throw for valid contract)
-			await contractService.getGameContract(999999);
-			checks.gameFactory = true;
-		} catch (error: any) {
-			// This is expected for non-existent game, but if contract is unreachable,
-			// it would be a different error
-			if (error?.message?.includes('contract')) {
-				checks.gameFactory = false;
-			} else {
-				checks.gameFactory = true;
-			}
-		}
-
-		// Determine overall health
-		const healthyChecks = Object.values(checks).filter(Boolean).length;
-		const totalChecks = Object.keys(checks).length;
-		const status = healthyChecks === totalChecks ? 'healthy' : healthyChecks > totalChecks / 2 ? 'degraded' : 'unhealthy';
-
-		return new Response(
-			JSON.stringify({
-				status,
-				contracts: contractAddresses,
-				network: env.NETWORK === 'base' ? 'Base Mainnet' : 'Base Sepolia',
-				chainId: env.NETWORK === 'base' ? 8453 : 84532,
-				checks,
-				rpcUrl: env.BASE_RPC_URL || 'https://sepolia.base.org',
-				timestamp: Date.now(),
-			}),
-			{
-				status: status === 'healthy' ? 200 : status === 'degraded' ? 206 : 503,
-				headers: {
-					'Content-Type': 'application/json',
-					'Access-Control-Allow-Origin': '*',
-				},
-			}
-		);
-	} catch (error) {
-		console.error('Contract health check failed:', error);
-		return new Response(
-			JSON.stringify({
-				status: 'unhealthy',
-				error: 'Failed to connect to contracts',
-				details: error instanceof Error ? error.message : String(error),
-				contracts: contractAddresses,
-				timestamp: Date.now(),
-			}),
-			{
-				status: 503,
-				headers: {
-					'Content-Type': 'application/json',
-					'Access-Control-Allow-Origin': '*',
-				},
-			}
-		);
 	}
 }
