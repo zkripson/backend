@@ -1,6 +1,8 @@
 # ZK Battleship Backend
 
-A production-grade Cloudflare Workers backend service for the ZK Battleship game, featuring backend-driven gameplay with MegaETH blockchain integration for final results and rewards.
+![Deploy to Cloudflare Workers](https://github.com/your-org/battleship-backend/actions/workflows/deploy.yml/badge.svg)
+
+A production-grade Cloudflare Workers backend service for the ZK Battleship game, featuring backend-driven gameplay with Base blockchain integration for final results and rewards.
 
 ## 🚀 Architecture Overview
 
@@ -31,11 +33,11 @@ A production-grade Cloudflare Workers backend service for the ZK Battleship game
 - **All game logic** runs in Cloudflare Workers
 - **Real-time shot processing** (~10ms latency)
 - **Server-side validation** of all moves
-- **Automatic timeout handling** (60s turns, 10m games)
+- **Automatic timeout handling** (15s turns, 3m games)
 - **No ZK proofs required** for individual moves
 
 ### Smart Blockchain Integration
-- **Game creation** on MegaETH
+- **Game creation** on Base blockchain
 - **Final results** stored on-chain
 - **$SHIP token rewards** automatically distributed
 - **Minimal gas costs** (only 2 transactions per game)
@@ -52,16 +54,16 @@ A production-grade Cloudflare Workers backend service for the ZK Battleship game
 - **Runtime**: Cloudflare Workers
 - **State Management**: Durable Objects
 - **Real-time Communication**: WebSockets
-- **Blockchain**: MegaETH
+- **Blockchain**: Base (Ethereum L2)
 - **Language**: TypeScript
 - **Data Storage**: Cloudflare Durable Objects API
 
 ## 📋 Requirements
 
-- Node.js 16+
+- Node.js 20+
 - Cloudflare account with Workers and Durable Objects enabled
-- MegaETH RPC access
-- Wrangler CLI
+- Base Sepolia RPC access
+- Wrangler CLI v4+
 
 ## 🚀 Quick Start
 
@@ -95,7 +97,8 @@ name = "INVITE_MANAGER"
 class_name = "InviteManager"
 
 [vars]
-MEGAETH_RPC_URL = "https://your-megaeth-node.com"
+BASE_RPC_URL = "https://mainnet.base.org"
+BASE_SEPOLIA_RPC_URL = "https://sepolia.base.org"
 GAME_FACTORY_ADDRESS = "0x..."
 ENVIRONMENT = "development"
 LOG_LEVEL = "info"
@@ -142,7 +145,7 @@ POST /api/invites/accept
 ### 3. Register On-Chain Game
 
 ```javascript
-// Frontend calls MegaETH contract
+// Frontend calls Base contract
 const tx = await gameFactory.createGame(opponentAddress);
 const gameId = receipt.events[0].args.gameId;
 
@@ -266,12 +269,12 @@ ws://backend.url/api/game-updates?sessionId=123&address=0x1234
 
 ## 🕐 Game Timing
 
-- **Turn Timeout**: 60 seconds
+- **Turn Timeout**: 15 seconds
   - Automatic turn switch when time expires
   - No game termination, just turn forfeit
-- **Game Timeout**: 10 minutes maximum
+- **Game Timeout**: 3 minutes maximum
   - Winner determined by most ships sunk
-  - Automatic game completion
+  - Automatic game completion and contract result submission
 
 ## 🧪 Testing
 
@@ -326,11 +329,48 @@ Visit `https://your-backend.workers.dev/admin/dashboard` for a real-time monitor
 
 ## 🚀 Deployment
 
+### CI/CD with GitHub Actions
+
+The project is configured with GitHub Actions to automatically deploy to Cloudflare Workers whenever changes are pushed to the `master` branch.
+
+1. **Setup GitHub Secrets**
+
+   Add the following secrets to your GitHub repository:
+   
+   - `CF_API_TOKEN`: Cloudflare API token with Workers and DO permissions
+   - `CF_ACCOUNT_ID`: Your Cloudflare account ID
+   - `BASE_RPC_URL`: Base Mainnet RPC URL
+   - `BASE_SEPOLIA_RPC_URL`: Base Sepolia RPC URL
+   - `GAME_FACTORY_ADDRESS`: Address of the game factory contract
+   
+   [Detailed setup instructions](./docs/github-actions-setup.md)
+
+2. **How It Works**
+   
+   - Every push to the `master` branch triggers a deployment
+   - The workflow installs dependencies and runs `npm run deploy`
+   - View deployment status in the "Actions" tab of your GitHub repository
+   - Manual deployments can be triggered via the GitHub UI
+
+3. **Manual Deployment**
+
+   If you prefer to deploy manually:
+   
+   ```bash
+   # Set up your Cloudflare credentials
+   wrangler login
+   
+   # Deploy to Cloudflare
+   npm run deploy
+   ```
+
 ### Production Checklist
 
 1. **Environment Variables**
    ```bash
-   wrangler secret put MEGAETH_RPC_URL
+   # These should be set as GitHub secrets for CI/CD
+   wrangler secret put BASE_SEPOLIA_RPC_URL
+   wrangler secret put BASE_RPC_URL
    wrangler secret put GAME_FACTORY_ADDRESS
    ```
 
@@ -377,9 +417,10 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## 🔗 Links
 
-- [MegaETH Documentation](https://docs.megaeth.systems)
+- [Base Documentation](https://docs.base.org)
 - [Cloudflare Workers Docs](https://developers.cloudflare.com/workers/)
 - [Durable Objects Guide](https://developers.cloudflare.com/workers/runtime-apis/durable-objects/)
+- [GitHub Actions Documentation](https://docs.github.com/en/actions)
 
 ## 💬 Support
 

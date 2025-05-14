@@ -6,7 +6,7 @@ compatibility_flags = ["durable_object_alarms"]
 # Environment variables
 [vars]
 BASE_RPC_URL = "https://sepolia.base.org"
-GAME_FACTORY_ADDRESS = "0xGameFactoryAddressGoesHere"
+GAME_FACTORY_ADDRESS = "0x4D649D9EeF8f902CA0585F0822182363A5C0B19D"
 
 # Durable Object bindings
 [[durable_objects.bindings]]
