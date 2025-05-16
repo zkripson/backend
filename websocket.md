@@ -169,7 +169,28 @@ Sent immediately after connection:
         "shots": [...],
         "sunkShips": {"0x1234...": 5, "0x5678...": 3},
         "gameStartedAt": 1682541234567,
-        "gameEndedAt": 1682541534567
+        "gameEndedAt": 1682541534567,
+        "duration": 300000,
+        "isBettingGame": false,
+        "bettingInfo": null
+    },
+    "playerStats": {
+        "0x1234...": {
+            "address": "0x1234...",
+            "shotsCount": 42,
+            "hitsCount": 17,
+            "accuracy": 40,  // percentage
+            "shipsSunk": 5,
+            "avgTurnTime": 8500  // milliseconds
+        },
+        "0x5678...": {
+            "address": "0x5678...",
+            "shotsCount": 38,
+            "hitsCount": 12,
+            "accuracy": 32,  // percentage
+            "shipsSunk": 3,
+            "avgTurnTime": 7200  // milliseconds
+        }
     }
 }
 ```
@@ -277,6 +298,18 @@ class BattleshipGameController {
         this.ws.on('game_over', (data) => {
             this.showGameOverScreen(data.winner, data.reason);
             this.displayFinalStats(data.finalState);
+            
+            // Display comprehensive player statistics
+            Object.entries(data.playerStats).forEach(([address, stats]) => {
+                this.displayPlayerStats({
+                    address: stats.address,
+                    shotsCount: stats.shotsCount,
+                    hitsCount: stats.hitsCount,
+                    accuracy: `${stats.accuracy}%`,
+                    shipsSunk: stats.shipsSunk,
+                    avgTurnTime: `${(stats.avgTurnTime / 1000).toFixed(1)}s`
+                });
+            });
         });
     }
     
@@ -496,6 +529,57 @@ async makeShot(x: number, y: number): Promise<void> {
 }
 ```
 
+## 10. Player Statistics in Game Over Event
+
+The enhanced game_over event now includes comprehensive player statistics:
+
+### Player Stats Object
+Each player's statistics include:
+- **address**: Player's wallet address
+- **shotsCount**: Total number of shots taken
+- **hitsCount**: Number of successful hits
+- **accuracy**: Hit percentage (0-100)
+- **shipsSunk**: Number of opponent's ships sunk
+- **avgTurnTime**: Average time taken per turn in milliseconds
+
+### Example Usage
+
+```javascript
+function displayGameResults(gameOverData) {
+    const { winner, reason, playerStats } = gameOverData;
+    
+    // Create a comparison view
+    const statsComparison = Object.entries(playerStats).map(([address, stats]) => ({
+        player: address,
+        isWinner: address === winner,
+        shots: stats.shotsCount,
+        hits: stats.hitsCount,
+        accuracy: `${stats.accuracy}%`,
+        shipsSunk: stats.shipsSunk,
+        avgTurnTime: formatTime(stats.avgTurnTime),
+        efficiency: stats.hitsCount / stats.shotsCount
+    }));
+    
+    // Sort by winner first
+    statsComparison.sort((a, b) => b.isWinner - a.isWinner);
+    
+    // Display in UI
+    statsComparison.forEach(playerStats => {
+        this.ui.addPlayerStatsRow({
+            ...playerStats,
+            rank: playerStats.isWinner ? 1 : 2
+        });
+    });
+}
+
+function formatTime(milliseconds) {
+    const seconds = milliseconds / 1000;
+    return seconds < 60 
+        ? `${seconds.toFixed(1)}s` 
+        : `${Math.floor(seconds / 60)}m ${(seconds % 60).toFixed(0)}s`;
+}
+```
+
 ## Summary
 
 This WebSocket integration provides:
@@ -506,5 +590,6 @@ This WebSocket integration provides:
 4. **Better UX**: Immediate feedback for all game actions
 5. **Robust Connectivity**: Automatic reconnection and error handling
 6. **Performance**: Minimal data transfer, optimized updates
+7. **Comprehensive Stats**: Detailed player performance metrics at game end
 
 The combination of WebSocket for real-time updates and REST API for game actions creates a smooth, responsive gaming experience while maintaining the simplicity of backend-driven game logic.
