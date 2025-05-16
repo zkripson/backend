@@ -37,7 +37,8 @@ A production-grade Cloudflare Workers backend service for the ZK Battleship game
 - **No ZK proofs required** for individual moves
 
 ### Smart Blockchain Integration
-- **Game creation** on Base blockchain
+- **Automatic game creation** when players join
+- **Backend handles all contract interactions**
 - **Final results** stored on-chain
 - **$SHIP token rewards** automatically distributed
 - **Minimal gas costs** (only 2-3 transactions per game)
@@ -117,7 +118,7 @@ npm run deploy
 
 ## 🎯 Game Flow
 
-### 1. Create a Game
+### 1. Create Game Invitation
 
 ```javascript
 // Player 1 creates invitation
@@ -130,7 +131,7 @@ POST /api/invites/create
 // Response includes session ID and invite code
 ```
 
-### 2. Join Game
+### 2. Join Game & Automatic On-Chain Creation
 
 ```javascript
 // Player 2 accepts invitation
@@ -140,26 +141,13 @@ POST /api/invites/accept
     "player": "0x5678..."
 }
 
-// Automatically joins the pre-created session
+// Backend automatically:
+// 1. Joins player to pre-created session
+// 2. Creates the game on-chain when second player joins
+// 3. Returns game ID and contract address in response
 ```
 
-### 3. Register On-Chain Game
-
-```javascript
-// Frontend calls Base contract
-const tx = await gameFactory.createGame(opponentAddress);
-const gameId = receipt.events[0].args.gameId;
-
-// Register with backend
-POST /api/contracts/register-game
-{
-    "sessionId": "123e4567...",
-    "gameId": "1",
-    "gameContractAddress": "0xabc..."
-}
-```
-
-### 4. Gameplay
+### 3. Gameplay
 
 All game actions happen via REST API:
 
@@ -195,6 +183,7 @@ ws://backend.url/api/game-updates?sessionId=123&address=0x1234
 | `/api/sessions/:id/submit-board` | POST | Submit ship placement |
 | `/api/sessions/:id/make-shot` | POST | Fire a shot |
 | `/api/sessions/:id/forfeit` | POST | Forfeit the game |
+| `/api/sessions/:id/register-contract` | POST | (Legacy) Manual contract registration |
 
 ### Players
 
@@ -422,13 +411,15 @@ The project is configured with GitHub Actions to automatically deploy to Cloudfl
    wrangler secret put BASE_SEPOLIA_RPC_URL
    wrangler secret put BASE_RPC_URL
    wrangler secret put GAME_FACTORY_ADDRESS
+   wrangler secret put BACKEND_PRIVATE_KEY  # Required for contract interactions
    ```
 
 2. **Security**
    - [ ] Replace admin tokens
-   - [ ] Configure CORS properly
+   - [ ] Configure CORS properly  
    - [ ] Enable rate limiting
    - [ ] Set up monitoring alerts
+   - [ ] Secure backend private key
 
 3. **Performance**
    - [ ] Configure Durable Objects regions
