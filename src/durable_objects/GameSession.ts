@@ -813,25 +813,39 @@ export class GameSession {
 
 		console.log(`Determining winner by sunk ships count due to timeout`);
 		const sunkShipsCount = this.getSunkShipsCount();
-
+		
+		// The winner is the player who sunk more ships on their opponent's board
+		// So we need to invert the logic - the player with fewer sunk ships on their own board
+		// (meaning they defended better) is winning
 		let winner: string | null = null;
-		let maxSunkShips = 0;
+		let minSunkShips = Infinity;
+		let shipsSunkByPlayer: Record<string, number> = {};
 
-		for (const [player, sunkCount] of Object.entries(sunkShipsCount)) {
-			if (sunkCount > maxSunkShips) {
-				maxSunkShips = sunkCount;
+		// Calculate how many ships each player sunk on their opponent's board
+		for (const player of this.players) {
+			const opponent = this.players.find(p => p !== player);
+			if (opponent) {
+				shipsSunkByPlayer[player] = sunkShipsCount[opponent] || 0;
+			}
+		}
+
+		// Find the player who sunk the most ships
+		let maxShipsSunk = 0;
+		for (const [player, sunkCount] of Object.entries(shipsSunkByPlayer)) {
+			if (sunkCount > maxShipsSunk) {
+				maxShipsSunk = sunkCount;
 				winner = player;
-			} else if (sunkCount === maxSunkShips && maxSunkShips > 0) {
+			} else if (sunkCount === maxShipsSunk && maxShipsSunk > 0) {
 				winner = null; // Tie only if both have sunk ships
 			}
 		}
 
 		// Give advantage to player who went second in case of no ships sunk
-		if (maxSunkShips === 0 && this.players.length === 2) {
+		if (maxShipsSunk === 0 && this.players.length === 2) {
 			winner = this.players[1]; // Second player wins in case of no activity
 		}
 
-		console.log(`Game ending due to time limit. Winner: ${winner || 'Tie'}, Sunk ships: ${JSON.stringify(sunkShipsCount)}`);
+		console.log(`Game ending due to time limit. Winner: ${winner || 'Tie'}, Ships sunk by each player: ${JSON.stringify(shipsSunkByPlayer)}`);
 		await this.endGame(winner, 'TIME_LIMIT');
 	}
 
