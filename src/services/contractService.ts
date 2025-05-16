@@ -16,7 +16,7 @@ import SHIPTokenABI from '../abis/SHIPToken.json';
 import StatisticsABI from '../abis/BattleshipStatistics.json';
 import BattleshipBettingABI from '../abis/BattleshipBetting.json';
 import USDC_TOKEN_ABI from '../abis/USDCToken.json';
-import { BettingInvite, BettingInviteCreatedEvent, GameResolvedEvent } from '../types';
+import { BettingInvite, BettingInviteCreatedEvent, GameResolvedEvent, GameCreatedFromBettingEvent } from '../types';
 
 // Define zero address for winner = null scenario
 export const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000' as `0x${string}`;
@@ -477,7 +477,7 @@ export class ContractGameService {
 				logs: receipt.logs,
 			}) as any[];
 
-			const gameCreatedEvent = logs.find((log) => log.eventName === 'GameCreated') as GameCreatedEvent | undefined;
+			const gameCreatedEvent = logs.find((log) => log.eventName === 'GameCreated') as GameCreatedFromBettingEvent | undefined;
 
 			if (!gameCreatedEvent || !gameCreatedEvent.args) {
 				throw new Error('GameCreated event not found in transaction receipt');
@@ -619,15 +619,19 @@ export class ContractGameService {
 			}
 
 			return {
-				id: invite[0],
+				id: String(inviteId),
+				code: null,
 				creator: invite[1],
 				stakeAmount: formatUnits(invite[2], 6), // Convert from wei to USDC
 				acceptor: invite[3],
-				createdAt: Number(invite[4]),
-				timeout: Number(invite[5]),
+				createdAt: Number(invite[4]) * 1000, // Convert to milliseconds
+				expiresAt: Number(invite[5]) * 1000, // Convert to milliseconds
+				onChainInviteId: String(invite[0]),
+				transactionHash: null,
 				betStatus: invite[6] as 'Open' | 'Matched' | 'Escrowed' | 'Resolved' | 'Cancelled' | 'Expired',
 				gameStatus: invite[7] as 'CREATED' | 'WAITING' | 'SETUP' | 'ACTIVE' | 'COMPLETED' | 'CANCELLED',
-				gameId: invite[8],
+				gameId: invite[8] ? String(invite[8]) : null,
+				sessionId: null,
 				fundsDistributed: invite[9],
 			};
 		} catch (error) {

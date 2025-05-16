@@ -392,14 +392,18 @@ export interface Board {
 
 export interface BettingInvite {
 	id: string;
+	code: string | null;
 	creator: string;
 	stakeAmount: string; // In USDC (6 decimals)
 	acceptor: string | null;
 	createdAt: number;
-	timeout: number;
+	expiresAt: number;
+	onChainInviteId: string | null;
+	transactionHash: `0x${string}` | null;
 	betStatus: 'Open' | 'Matched' | 'Escrowed' | 'Resolved' | 'Cancelled' | 'Expired';
-	gameStatus: 'CREATED' | 'WAITING' | 'SETUP' | 'ACTIVE' | 'COMPLETED' | 'CANCELLED';
+	gameStatus?: 'CREATED' | 'WAITING' | 'SETUP' | 'ACTIVE' | 'COMPLETED' | 'CANCELLED';
 	gameId: string | null;
+	sessionId: string | null;
 	fundsDistributed: boolean;
 }
 
@@ -433,7 +437,7 @@ export interface BettingInviteCreatedEvent {
 	};
 }
 
-export interface GameCreatedEvent {
+export interface GameCreatedFromBettingEvent {
 	eventName: string;
 	args: {
 		gameId: bigint;
