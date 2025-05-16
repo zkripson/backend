@@ -424,6 +424,35 @@ export interface GameBettingInfo {
 	platformFee?: string;
 }
 
+export interface BettingInviteCreatedEvent {
+	eventName: string;
+	args: {
+		inviteId: bigint;
+		creator: `0x${string}`;
+		stakeAmount: bigint;
+	};
+}
+
+export interface GameCreatedEvent {
+	eventName: string;
+	args: {
+		gameId: bigint;
+		inviteId: bigint;
+		playerA: `0x${string}`;
+		playerB: `0x${string}`;
+	};
+}
+
+export interface GameResolvedEvent {
+	eventName: string;
+	args: {
+		gameId: bigint;
+		winner: `0x${string}`;
+		winnerPayout: bigint;
+		platformFee: bigint;
+	};
+}
+
 export interface InvitationCreateRequest {
 	code: string;
 	creator: string;

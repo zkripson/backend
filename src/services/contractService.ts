@@ -3,7 +3,7 @@
  *
  * Handles interactions with the deployed Base Sepolia smart contracts
  */
-import { createPublicClient, createWalletClient, http, getContract, parseEventLogs } from 'viem';
+import { createPublicClient, createWalletClient, http, getContract, parseEventLogs, formatEther, formatUnits, parseUnits } from 'viem';
 import { base, baseSepolia } from 'viem/chains';
 import { privateKeyToAccount } from 'viem/accounts';
 import { ErrorHandler, ErrorCode } from '../utils/errorMonitoring';
@@ -15,6 +15,8 @@ import BattleshipGameABI from '../abis/BattleshipGameImplementation.json';
 import SHIPTokenABI from '../abis/SHIPToken.json';
 import StatisticsABI from '../abis/BattleshipStatistics.json';
 import BattleshipBettingABI from '../abis/BattleshipBetting.json';
+import USDC_TOKEN_ABI from '../abis/USDCToken.json';
+import { BettingInvite, BettingInviteCreatedEvent, GameResolvedEvent } from '../types';
 
 // Define zero address for winner = null scenario
 export const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000' as `0x${string}`;
@@ -49,6 +51,7 @@ export function getContractAddresses(env: any) {
 		GameFactory: ensureHexAddress(env.GAME_FACTORY_ADDRESS, '0x58690125194c12ceeed78f117dff38d2927dc7b3'),
 		BattleshipBetting: ensureHexAddress(env.BATTLESHIP_BETTING_ADDRESS, '0x69d5f714bf656c88ccd3137b78f6e452e511cee0'),
 		Backend: ensureHexAddress(env.BACKEND_ADDRESS, '0x459D7FB72ac3dFB0666227B30F25A424A5583E9c'),
+		USDCToken: ensureHexAddress(env.USDC_TOKEN_ADDRESS, '0x5972855755495592448e584e459a1d300929191d'),
 	};
 }
 
@@ -113,6 +116,12 @@ export function createContractClients(env: any) {
 		client: { public: publicClient, wallet: walletClient },
 	});
 
+	const usdcToken = getContract({
+		address: contractAddresses.USDCToken,
+		abi: USDC_TOKEN_ABI,
+		client: { public: publicClient, wallet: walletClient },
+	});
+
 	return {
 		publicClient,
 		walletClient,
@@ -120,6 +129,7 @@ export function createContractClients(env: any) {
 		shipToken,
 		statistics,
 		battleshipBetting,
+		usdcToken,
 		account,
 		contractAddresses,
 	};
@@ -335,6 +345,361 @@ export class ContractGameService {
 				`Failed to complete game: ${error instanceof Error ? error.message : String(error)}`,
 				{ gameId, winner, endReason }
 			);
+		}
+	}
+
+	// ** Betting ** //
+	/**
+	 * Create a betting invite with USDC stake
+	 */
+	async createBettingInvite(
+		creator: `0x${string}`,
+		stakeAmount: number
+	): Promise<{
+		inviteId: number;
+		transactionHash: `0x${string}`;
+	}> {
+		try {
+			// Convert stake amount to proper USDC format (6 decimals)
+			const stakeAmountWei = parseUnits(String(stakeAmount), 6);
+
+			// Call the betting contract
+			const hash = await this.clients.walletClient.writeContract({
+				address: this.clients.contractAddresses.BattleshipBetting,
+				abi: BattleshipBettingABI.abi,
+				functionName: 'createInvite',
+				args: [stakeAmountWei],
+				account: this.clients.account,
+			});
+
+			// Wait for transaction receipt
+			const receipt = await this.clients.publicClient.waitForTransactionReceipt({
+				hash,
+			});
+
+			// Parse events to get the invite ID
+			const logs = parseEventLogs({
+				abi: BattleshipBettingABI.abi,
+				logs: receipt.logs,
+			}) as any[];
+
+			const inviteCreatedEvent = logs.find((log) => log.eventName === 'InviteCreated') as BettingInviteCreatedEvent | undefined;
+
+			if (!inviteCreatedEvent || !inviteCreatedEvent.args) {
+				throw new Error('InviteCreated event not found in transaction receipt');
+			}
+
+			const inviteId = Number(inviteCreatedEvent.args.inviteId);
+
+			console.log(`Betting invite created: ID=${inviteId}, Creator=${creator}, Stake=${stakeAmount} USDC`);
+
+			return {
+				inviteId,
+				transactionHash: hash,
+			};
+		} catch (error) {
+			console.error('Error creating betting invite:', error);
+			throw ErrorHandler.createError(
+				ErrorCode.CONTRACT_ERROR,
+				`Failed to create betting invite: ${error instanceof Error ? error.message : String(error)}`,
+				{ creator, stakeAmount }
+			);
+		}
+	}
+
+	/**
+	 * Accept a betting invite
+	 */
+	async acceptBettingInvite(
+		inviteId: number,
+		acceptor: `0x${string}`
+	): Promise<{
+		transactionHash: `0x${string}`;
+	}> {
+		try {
+			// Get invite details first
+			const invite = await this.getBettingInvite(inviteId);
+			if (!invite || invite.creator === '0x0000000000000000000000000000000000000000') {
+				throw new Error('Invite not found');
+			}
+
+			// Call the betting contract
+			const hash = await this.clients.walletClient.writeContract({
+				address: this.clients.contractAddresses.BattleshipBetting,
+				abi: BattleshipBettingABI.abi,
+				functionName: 'acceptInvite',
+				args: [BigInt(inviteId)],
+				account: this.clients.account,
+			});
+
+			await this.clients.publicClient.waitForTransactionReceipt({ hash });
+
+			console.log(`Betting invite accepted: ID=${inviteId}, Acceptor=${acceptor}`);
+
+			return {
+				transactionHash: hash,
+			};
+		} catch (error) {
+			console.error('Error accepting betting invite:', error);
+			throw ErrorHandler.createError(
+				ErrorCode.CONTRACT_ERROR,
+				`Failed to accept betting invite: ${error instanceof Error ? error.message : String(error)}`,
+				{ inviteId, acceptor }
+			);
+		}
+	}
+
+	/**
+	 * Create a game from a matched betting invite
+	 */
+	async createGameFromBettingInvite(inviteId: number): Promise<{
+		gameId: number;
+		transactionHash: `0x${string}`;
+	}> {
+		try {
+			// Call the betting contract
+			const hash = await this.clients.walletClient.writeContract({
+				address: this.clients.contractAddresses.BattleshipBetting,
+				abi: BattleshipBettingABI.abi,
+				functionName: 'createGame',
+				args: [BigInt(inviteId)],
+				account: this.clients.account,
+			});
+
+			// Wait for transaction receipt
+			const receipt = await this.clients.publicClient.waitForTransactionReceipt({
+				hash,
+			});
+
+			// Parse events to get the game ID
+			const logs = parseEventLogs({
+				abi: BattleshipBettingABI.abi,
+				logs: receipt.logs,
+			}) as any[];
+
+			const gameCreatedEvent = logs.find((log) => log.eventName === 'GameCreated') as GameCreatedEvent | undefined;
+
+			if (!gameCreatedEvent || !gameCreatedEvent.args) {
+				throw new Error('GameCreated event not found in transaction receipt');
+			}
+
+			const gameId = Number(gameCreatedEvent.args.gameId);
+
+			console.log(`Betting game created: GameID=${gameId}, InviteID=${inviteId}`);
+
+			return {
+				gameId,
+				transactionHash: hash,
+			};
+		} catch (error) {
+			console.error('Error creating game from betting invite:', error);
+			throw ErrorHandler.createError(
+				ErrorCode.CONTRACT_ERROR,
+				`Failed to create game from betting invite: ${error instanceof Error ? error.message : String(error)}`,
+				{ inviteId }
+			);
+		}
+	}
+
+	/**
+	 * Resolve a betting game and distribute winnings
+	 */
+	async resolveBettingGame(
+		gameId: number,
+		winner: `0x${string}` | null
+	): Promise<{
+		transactionHash: `0x${string}`;
+		winnerPayout: number;
+		platformFee: number;
+	}> {
+		try {
+			// Use zero address for draws
+			const winnerAddress = winner || '0x0000000000000000000000000000000000000000';
+
+			// Call the betting contract
+			const hash = await this.clients.walletClient.writeContract({
+				address: this.clients.contractAddresses.BattleshipBetting,
+				abi: BattleshipBettingABI.abi,
+				functionName: 'resolveGame',
+				args: [BigInt(gameId), winnerAddress],
+				account: this.clients.account,
+			});
+
+			// Wait for transaction receipt
+			const receipt = await this.clients.publicClient.waitForTransactionReceipt({
+				hash,
+			});
+
+			// Parse events to get payout details
+			const logs = parseEventLogs({
+				abi: BattleshipBettingABI.abi,
+				logs: receipt.logs,
+			}) as any[];
+
+			const gameResolvedEvent = logs.find((log) => log.eventName === 'GameResolved') as GameResolvedEvent | undefined;
+
+			let winnerPayout = 0;
+			let platformFee = 0;
+
+			if (gameResolvedEvent && gameResolvedEvent.args) {
+				winnerPayout = Number(formatUnits(gameResolvedEvent.args.winnerPayout, 6)); // Convert from wei to USDC
+				platformFee = Number(formatUnits(gameResolvedEvent.args.platformFee, 6));
+			}
+
+			console.log(
+				`Betting game resolved: GameID=${gameId}, Winner=${winner || 'Draw'}, ` + `Payout=${winnerPayout} USDC, Fee=${platformFee} USDC`
+			);
+
+			return {
+				transactionHash: hash,
+				winnerPayout,
+				platformFee,
+			};
+		} catch (error) {
+			console.error('Error resolving betting game:', error);
+			throw ErrorHandler.createError(
+				ErrorCode.CONTRACT_ERROR,
+				`Failed to resolve betting game: ${error instanceof Error ? error.message : String(error)}`,
+				{ gameId, winner }
+			);
+		}
+	}
+
+	/**
+	 * Cancel an open betting invite
+	 */
+	async cancelBettingInvite(
+		inviteId: number,
+		creator: `0x${string}`
+	): Promise<{
+		transactionHash: `0x${string}`;
+	}> {
+		try {
+			// Note: This is called by the creator, but we use backend account
+			// In practice, you might want to verify the creator is making this request
+			const hash = await this.clients.walletClient.writeContract({
+				address: this.clients.contractAddresses.BattleshipBetting,
+				abi: BattleshipBettingABI.abi,
+				functionName: 'cancelInvite',
+				args: [BigInt(inviteId)],
+				account: this.clients.account,
+			});
+
+			await this.clients.publicClient.waitForTransactionReceipt({ hash });
+
+			console.log(`Betting invite cancelled: ID=${inviteId}, Creator=${creator}`);
+
+			return {
+				transactionHash: hash,
+			};
+		} catch (error) {
+			console.error('Error cancelling betting invite:', error);
+			throw ErrorHandler.createError(
+				ErrorCode.CONTRACT_ERROR,
+				`Failed to cancel betting invite: ${error instanceof Error ? error.message : String(error)}`,
+				{ inviteId, creator }
+			);
+		}
+	}
+
+	/**
+	 * Get betting invite details
+	 */
+	async getBettingInvite(inviteId: number): Promise<BettingInvite | null> {
+		try {
+			const invite = (await this.clients.publicClient.readContract({
+				address: this.clients.contractAddresses.BattleshipBetting,
+				abi: BattleshipBettingABI.abi,
+				functionName: 'getBettingInvite',
+				args: [BigInt(inviteId)],
+			})) as any;
+
+			if (!invite || invite[0] === 0n) {
+				return null;
+			}
+
+			return {
+				id: invite[0],
+				creator: invite[1],
+				stakeAmount: formatUnits(invite[2], 6), // Convert from wei to USDC
+				acceptor: invite[3],
+				createdAt: Number(invite[4]),
+				timeout: Number(invite[5]),
+				betStatus: invite[6] as 'Open' | 'Matched' | 'Escrowed' | 'Resolved' | 'Cancelled' | 'Expired',
+				gameStatus: invite[7] as 'CREATED' | 'WAITING' | 'SETUP' | 'ACTIVE' | 'COMPLETED' | 'CANCELLED',
+				gameId: invite[8],
+				fundsDistributed: invite[9],
+			};
+		} catch (error) {
+			console.error('Error getting betting invite:', error);
+			return null;
+		}
+	}
+
+	/**
+	 * Get game betting info
+	 */
+	async getGameBettingInfo(gameId: number): Promise<{
+		inviteId: number;
+		totalPool: number;
+		resolved: boolean;
+	} | null> {
+		try {
+			const result = (await this.clients.publicClient.readContract({
+				address: this.clients.contractAddresses.BattleshipBetting,
+				abi: BattleshipBettingABI.abi,
+				functionName: 'getGameBettingInfo',
+				args: [BigInt(gameId)],
+			})) as [bigint, bigint, boolean];
+
+			if (result[0] === 0n) {
+				return null;
+			}
+
+			return {
+				inviteId: Number(result[0]),
+				totalPool: Number(result[1]) / 1_000_000, // Convert from wei to USDC
+				resolved: result[2],
+			};
+		} catch (error) {
+			console.error('Error getting game betting info:', error);
+			return null;
+		}
+	}
+
+	/**
+	 * Get all betting invites for a player
+	 */
+	async getPlayerBettingInvites(player: `0x${string}`): Promise<number[]> {
+		try {
+			const inviteIds = (await this.clients.publicClient.readContract({
+				address: this.clients.contractAddresses.BattleshipBetting,
+				abi: BattleshipBettingABI.abi,
+				functionName: 'getPlayerInvites',
+				args: [player],
+			})) as bigint[];
+
+			return inviteIds.map((id) => Number(id));
+		} catch (error) {
+			console.error('Error getting player betting invites:', error);
+			return [];
+		}
+	}
+
+	/**
+	 * Check if invite has expired
+	 */
+	async isInviteExpired(inviteId: number): Promise<boolean> {
+		try {
+			return (await this.clients.publicClient.readContract({
+				address: this.clients.contractAddresses.BattleshipBetting,
+				abi: BattleshipBettingABI.abi,
+				functionName: 'isInviteExpired',
+				args: [BigInt(inviteId)],
+			})) as boolean;
+		} catch (error) {
+			console.error('Error checking if invite expired:', error);
+			return false;
 		}
 	}
 
