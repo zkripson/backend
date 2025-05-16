@@ -330,6 +330,19 @@ ws.onmessage = (event) => {
             
         case 'game_over':
             showGameOverScreen(message.winner, message.reason);
+            
+            // Display player stats
+            for (const [address, stats] of Object.entries(message.playerStats)) {
+                showPlayerStats({
+                    player: address,
+                    shots: stats.shotsCount,
+                    hits: stats.hitsCount,
+                    accuracy: stats.accuracy + '%',
+                    shipsSunk: stats.shipsSunk,
+                    avgTurnTime: stats.avgTurnTime / 1000 + 's'
+                });
+            }
+            
             if (message.finalState.isBettingGame) {
                 showBettingInfo(message.finalState.bettingInfo);
             }

@@ -18,6 +18,8 @@ import {
 	GameBettingInfo,
 	BettingResolvedMessage,
 	BettingErrorMessage,
+	GameOverMessage,
+	PlayerGameStats,
 } from '../types';
 import { ShipTracker, Ship, Board } from '../utils/shipTracker';
 import { ErrorHandler, ErrorCode, GameValidator, PerformanceMonitor } from '../utils/errorMonitoring';
@@ -597,23 +599,27 @@ export class GameSession {
 
 			// Send final game state to all connected players
 			const gameEndedAt = Date.now();
-			this.broadcastToAll({
+			const playerStats = this.calculatePlayerStats();
+			
+			// Send enhanced game over event with player stats
+			const gameOverMessage: GameOverMessage = {
 				type: 'game_over',
 				status: this.status,
 				winner: winner,
 				reason: reason,
 				finalState: {
-					gameId: this.gameId,
-					gameContractAddress: this.gameContractAddress,
 					shots: this.shots,
 					sunkShips: this.getSunkShipsCount(),
-					gameStartedAt: this.gameStartedAt,
+					gameStartedAt: this.gameStartedAt!,
 					gameEndedAt: gameEndedAt,
-					duration: this.gameStartedAt ? gameEndedAt - this.gameStartedAt : null,
+					duration: this.gameStartedAt ? gameEndedAt - this.gameStartedAt : 0,
 					isBettingGame: !!this.bettingInviteId,
-					bettingInfo: this.bettingInfo,
+					bettingInfo: this.bettingInfo || undefined,
 				},
-			});
+				playerStats: playerStats,
+			};
+			
+			this.broadcastToAll(gameOverMessage);
 
 			// Submit final result to contract - wrapped in try/catch to ensure it doesn't prevent game ending
 			try {
@@ -843,6 +849,79 @@ export class GameSession {
 		}
 
 		return sunkShipsCount;
+	}
+
+	// Calculate comprehensive player statistics
+	private calculatePlayerStats(): Record<string, PlayerGameStats> {
+		const stats: Record<string, PlayerGameStats> = {};
+
+		// Initialize stats for each player
+		for (const player of this.players) {
+			stats[player] = {
+				address: player,
+				shotsCount: 0,
+				hitsCount: 0,
+				accuracy: 0,
+				shipsSunk: 0,
+				avgTurnTime: 0,
+			};
+		}
+
+		// Calculate shot statistics
+		for (const shot of this.shots) {
+			const playerStats = stats[shot.player];
+			if (playerStats) {
+				playerStats.shotsCount++;
+				if (shot.isHit) {
+					playerStats.hitsCount++;
+				}
+			}
+		}
+
+		// Calculate accuracy
+		for (const player of this.players) {
+			const playerStats = stats[player];
+			if (playerStats.shotsCount > 0) {
+				playerStats.accuracy = Math.round((playerStats.hitsCount / playerStats.shotsCount) * 100);
+			}
+		}
+
+		// Add ships sunk data
+		const sunkShipsCount = this.getSunkShipsCount();
+		for (const player of this.players) {
+			// Ships sunk by this player means ships sunk on the opponent's board
+			const opponent = this.players.find((p) => p !== player);
+			if (opponent && sunkShipsCount[opponent] !== undefined) {
+				stats[player].shipsSunk = sunkShipsCount[opponent];
+			}
+		}
+
+		// Calculate average turn time
+		const turnTimes: Record<string, number[]> = {};
+		for (const player of this.players) {
+			turnTimes[player] = [];
+		}
+
+		// Group shots by player to calculate turn times
+		let lastTurnTime = this.gameStartedAt || Date.now();
+		for (const shot of this.shots) {
+			const turnDuration = shot.timestamp - lastTurnTime;
+			if (turnTimes[shot.player]) {
+				turnTimes[shot.player].push(turnDuration);
+			}
+			lastTurnTime = shot.timestamp;
+		}
+
+		// Calculate average turn times
+		for (const player of this.players) {
+			const playerTurnTimes = turnTimes[player];
+			if (playerTurnTimes.length > 0) {
+				const avgTime = playerTurnTimes.reduce((sum, time) => sum + time, 0) / playerTurnTimes.length;
+				stats[player].avgTurnTime = Math.round(avgTime);
+			}
+		}
+
+		return stats;
 	}
 
 	// Resume timeouts on restart

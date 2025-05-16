@@ -309,6 +309,15 @@ export interface ShipSunkMessage {
 	totalSunk: number;
 }
 
+export interface PlayerGameStats {
+	address: string;
+	shotsCount: number;
+	hitsCount: number;
+	accuracy: number; // percentage
+	shipsSunk: number;
+	avgTurnTime: number; // in milliseconds
+}
+
 export interface GameOverMessage {
 	type: 'game_over';
 	status: string;
@@ -319,6 +328,12 @@ export interface GameOverMessage {
 		sunkShips: Record<string, number>;
 		gameStartedAt: number;
 		gameEndedAt: number;
+		duration: number;
+		isBettingGame: boolean;
+		bettingInfo?: GameBettingInfo;
+	};
+	playerStats: {
+		[playerAddress: string]: PlayerGameStats;
 	};
 }
 
