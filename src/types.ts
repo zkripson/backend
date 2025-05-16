@@ -1,6 +1,6 @@
 export interface SessionData {
 	sessionId: string;
-	status: 'CREATED' | 'WAITING' | 'ACTIVE' | 'COMPLETED' | 'CANCELLED' | 'SETUP';
+	status: 'CREATED' | 'WAITING' | 'SETUP' | 'ACTIVE' | 'COMPLETED' | 'CANCELLED'; // This is GAME status
 	players: string[];
 	gameContractAddress: string | null;
 	gameId: string | null;
@@ -9,6 +9,9 @@ export interface SessionData {
 	currentTurn: string | null;
 	turnStartedAt: number | null;
 	playerBoardsArray?: [string, string][];
+	// Add betting info
+	bettingInviteId?: string;
+	bettingInfo?: GameBettingInfo;
 }
 // Cloudflare Workers specific types
 export type TimeoutId = number; // In Workers, setTimeout returns a number
@@ -62,15 +65,9 @@ export interface ContractConfig {
 		BattleshipStatistics: string;
 		GameFactory: string;
 		Backend: string;
-	};
-	megaEthConfig: {
-		rpcUrl: string;
-		wsUrl: string;
-		gameFactoryAddress: string;
-		gameFactoryABI: string[];
-		gameABI: string[];
-		zkVerifierAddress: string;
-		zkVerifierABI: string[];
+		// Add betting contract
+		BattleshipBetting: string;
+		USDCToken: string;
 	};
 	features: {
 		gameFactory: boolean;
@@ -78,6 +75,7 @@ export interface ContractConfig {
 		rewards: boolean;
 		nft: boolean;
 		zkProofs: boolean;
+		betting: boolean;
 	};
 }
 
@@ -392,12 +390,84 @@ export interface Board {
 	cells: number[][]; // 0 = water, 1-5 = ship parts
 }
 
+export interface BettingInvite {
+	id: string;
+	creator: string;
+	stakeAmount: string; // In USDC (6 decimals)
+	acceptor: string | null;
+	createdAt: number;
+	timeout: number;
+	betStatus: 'Open' | 'Matched' | 'Escrowed' | 'Resolved' | 'Cancelled' | 'Expired';
+	gameStatus: 'CREATED' | 'WAITING' | 'SETUP' | 'ACTIVE' | 'COMPLETED' | 'CANCELLED';
+	gameId: string | null;
+	fundsDistributed: boolean;
+}
+
+export interface BettingInviteCreateRequest {
+	creator: string;
+	stakeAmount: string; // In USDC
+}
+
+export interface BettingInviteAcceptRequest {
+	inviteId: string;
+	acceptor: string;
+}
+
+export interface GameBettingInfo {
+	inviteId: string;
+	totalPool: string; // Total staked amount (2x stake)
+	betStatus: 'Open' | 'Matched' | 'Escrowed' | 'Resolved' | 'Cancelled' | 'Expired';
+	gameStatus: 'CREATED' | 'WAITING' | 'SETUP' | 'ACTIVE' | 'COMPLETED' | 'CANCELLED';
+	resolved: boolean;
+	winner?: string;
+	winnerPayout?: string;
+	platformFee?: string;
+}
+
+export interface InvitationCreateRequest {
+	code: string;
+	creator: string;
+	expirationHours: number;
+	sessionId: string | null;
+	// Add betting fields
+	stakeAmount?: string; // Optional for non-betting games
+	isBettingGame?: boolean;
+}
+
+// WebSocket message types for betting
+export interface BettingInviteCreatedMessage {
+	type: 'betting_invite_created';
+	inviteId: string;
+	creator: string;
+	stakeAmount: string;
+}
+
+export interface BettingInviteAcceptedMessage {
+	type: 'betting_invite_accepted';
+	inviteId: string;
+	acceptor: string;
+}
+
+export interface GameBettingResolvedMessage {
+	type: 'betting_resolved';
+	gameId: string;
+	winner: string | null;
+	winnerPayout: string;
+	platformFee: string;
+}
 // Environment types
 export interface Env {
 	// Durable Object bindings
 	GAME_SESSIONS: DurableObjectNamespace;
 	PLAYER_PROFILES: DurableObjectNamespace;
 	INVITE_MANAGER: DurableObjectNamespace;
+
+	USDC_TOKEN_ADDRESS: string;
+	BATTLESHIP_BETTING_ADDRESS: string;
+	BETTING_TREASURY_ADDRESS: string;
+
+	// Optional: Enable/disable betting
+	ENABLE_BETTING?: string; // 'true' | 'false'
 
 	// Contract addresses
 	GAME_FACTORY_ADDRESS: string;

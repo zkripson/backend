@@ -14,6 +14,7 @@ import GameFactoryABI from '../abis/GameFactoryWithStats.json';
 import BattleshipGameABI from '../abis/BattleshipGameImplementation.json';
 import SHIPTokenABI from '../abis/SHIPToken.json';
 import StatisticsABI from '../abis/BattleshipStatistics.json';
+import BattleshipBettingABI from '../abis/BattleshipBetting.json';
 
 // Define zero address for winner = null scenario
 export const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000' as `0x${string}`;
@@ -42,19 +43,21 @@ function ensureHexAddress(address: string | undefined, fallback: string): `0x${s
 // Get contract addresses from environment or use defaults for development
 export function getContractAddresses(env: any) {
 	return {
-		SHIPToken: ensureHexAddress(env.SHIP_TOKEN_ADDRESS, '0xECD81000150F2A039Dd45cdc8Fa3832518C51Bf2'),
-		BattleshipGameImplementation: ensureHexAddress(env.BATTLESHIP_GAME_IMPL_ADDRESS, '0xaBBc7a8f32819B15573e95C6EbC0A6ABfD205200'),
-		BattleshipStatistics: ensureHexAddress(env.BATTLESHIP_STATS_ADDRESS, '0xdDC03eD3BFd6d4f39D685E93313601d68B832930'),
-		GameFactory: ensureHexAddress(env.GAME_FACTORY_ADDRESS, '0x4D649D9EeF8f902CA0585F0822182363A5C0B19D'),
+		SHIPToken: ensureHexAddress(env.SHIP_TOKEN_ADDRESS, '0xe50d262e709a28633b647d9f9cc49dbd3e72e399'),
+		BattleshipGameImplementation: ensureHexAddress(env.BATTLESHIP_GAME_IMPL_ADDRESS, '0x855b752cdfd194ea696044c0b38e82d7984e0822'),
+		BattleshipStatistics: ensureHexAddress(env.BATTLESHIP_STATS_ADDRESS, '0x6a3533c0aa1b2f10750a52ad3dbafc5feb83f1a9'),
+		GameFactory: ensureHexAddress(env.GAME_FACTORY_ADDRESS, '0x58690125194c12ceeed78f117dff38d2927dc7b3'),
+		BattleshipBetting: ensureHexAddress(env.BATTLESHIP_BETTING_ADDRESS, '0x69d5f714bf656c88ccd3137b78f6e452e511cee0'),
 		Backend: ensureHexAddress(env.BACKEND_ADDRESS, '0x459D7FB72ac3dFB0666227B30F25A424A5583E9c'),
 	};
 }
 
 // Contract ABIs imported from JSON files
-export const GAME_FACTORY_ABI = GameFactoryABI;
-export const BATTLESHIP_GAME_ABI = BattleshipGameABI;
-export const SHIP_TOKEN_ABI = SHIPTokenABI;
-export const STATISTICS_ABI = StatisticsABI;
+export const GAME_FACTORY_ABI = GameFactoryABI.abi;
+export const BATTLESHIP_GAME_ABI = BattleshipGameABI.abi;
+export const SHIP_TOKEN_ABI = SHIPTokenABI.abi;
+export const STATISTICS_ABI = StatisticsABI.abi;
+export const BATTLESHIP_BETTING_ABI = BattleshipBettingABI.abi;
 
 // Initialize clients
 export function createContractClients(env: any) {
@@ -89,20 +92,25 @@ export function createContractClients(env: any) {
 	// Create contract instances
 	const gameFactory = getContract({
 		address: contractAddresses.GameFactory,
-		abi: GAME_FACTORY_ABI.abi,
+		abi: GAME_FACTORY_ABI,
 		client: { public: publicClient, wallet: walletClient },
 	});
 
 	const shipToken = getContract({
 		address: contractAddresses.SHIPToken,
-		abi: SHIP_TOKEN_ABI.abi,
+		abi: SHIP_TOKEN_ABI,
 		client: { public: publicClient, wallet: walletClient },
 	});
 
 	const statistics = getContract({
 		address: contractAddresses.BattleshipStatistics,
-		abi: STATISTICS_ABI.abi,
+		abi: STATISTICS_ABI,
 		client: { public: publicClient },
+	});
+	const battleshipBetting = getContract({
+		address: contractAddresses.BattleshipBetting,
+		abi: BATTLESHIP_BETTING_ABI,
+		client: { public: publicClient, wallet: walletClient },
 	});
 
 	return {
@@ -111,6 +119,7 @@ export function createContractClients(env: any) {
 		gameFactory,
 		shipToken,
 		statistics,
+		battleshipBetting,
 		account,
 		contractAddresses,
 	};
@@ -142,8 +151,8 @@ export class ContractGameService {
 				rpcUrl: this.env.BASE_RPC_URL || 'https://sepolia.base.org',
 				wsUrl: (this.env.BASE_RPC_URL || 'https://sepolia.base.org').replace('https://', 'wss://'),
 				gameFactoryAddress: contractAddresses.GameFactory,
-				gameFactoryABI: GAME_FACTORY_ABI.abi,
-				gameABI: BATTLESHIP_GAME_ABI.abi,
+				gameFactoryABI: GAME_FACTORY_ABI,
+				gameABI: BATTLESHIP_GAME_ABI,
 			},
 		};
 	}
@@ -169,7 +178,7 @@ export class ContractGameService {
 			// Use the modern writeContract pattern
 			const hash = await this.clients.walletClient.writeContract({
 				address: this.clients.contractAddresses.GameFactory,
-				abi: GAME_FACTORY_ABI.abi,
+				abi: GAME_FACTORY_ABI,
 				functionName: 'createGame',
 				args,
 				account: this.clients.account,
@@ -182,7 +191,7 @@ export class ContractGameService {
 
 			// Parse events to get the game ID and contract address
 			const logs = parseEventLogs({
-				abi: GAME_FACTORY_ABI.abi,
+				abi: GAME_FACTORY_ABI,
 				logs: receipt.logs,
 			}) as any[];
 
@@ -227,7 +236,7 @@ export class ContractGameService {
 			// Get the game contract address using readContract
 			const gameContractAddress = (await this.clients.publicClient.readContract({
 				address: this.clients.contractAddresses.GameFactory,
-				abi: GAME_FACTORY_ABI.abi,
+				abi: GAME_FACTORY_ABI,
 				functionName: 'games',
 				args: [BigInt(gameId)],
 			})) as `0x${string}`;
@@ -235,7 +244,7 @@ export class ContractGameService {
 			// Start the game using writeContract
 			const hash = await this.clients.walletClient.writeContract({
 				address: gameContractAddress,
-				abi: BATTLESHIP_GAME_ABI.abi,
+				abi: BATTLESHIP_GAME_ABI,
 				functionName: 'startGame',
 				account: this.clients.account,
 			});
@@ -274,7 +283,7 @@ export class ContractGameService {
 			// Get game contract address using readContract
 			const gameContractAddress = (await this.clients.publicClient.readContract({
 				address: this.clients.contractAddresses.GameFactory,
-				abi: GAME_FACTORY_ABI.abi,
+				abi: GAME_FACTORY_ABI,
 				functionName: 'games',
 				args: [BigInt(gameId)],
 			})) as `0x${string}`;
@@ -285,7 +294,7 @@ export class ContractGameService {
 			// Submit result to game contract using writeContract
 			const gameHash = await this.clients.walletClient.writeContract({
 				address: gameContractAddress,
-				abi: BATTLESHIP_GAME_ABI.abi,
+				abi: BATTLESHIP_GAME_ABI,
 				functionName: 'submitGameResult',
 				args: [winnerAddress, BigInt(totalShots), endReason],
 				account: this.clients.account,
@@ -296,7 +305,7 @@ export class ContractGameService {
 			// Calculate game duration using readContract
 			const createdAt = (await this.clients.publicClient.readContract({
 				address: gameContractAddress,
-				abi: BATTLESHIP_GAME_ABI.abi,
+				abi: BATTLESHIP_GAME_ABI,
 				functionName: 'createdAt',
 			})) as bigint;
 
@@ -305,7 +314,7 @@ export class ContractGameService {
 			// Report to factory for statistics using writeContract
 			const factoryHash = await this.clients.walletClient.writeContract({
 				address: this.clients.contractAddresses.GameFactory,
-				abi: GAME_FACTORY_ABI.abi,
+				abi: GAME_FACTORY_ABI,
 				functionName: 'reportGameCompletion',
 				args: [BigInt(gameId), winnerAddress, BigInt(gameDuration), BigInt(totalShots), endReason],
 				account: this.clients.account,
@@ -337,7 +346,7 @@ export class ContractGameService {
 			// Use readContract pattern for cleaner contract reading
 			const stats = (await this.clients.publicClient.readContract({
 				address: this.clients.contractAddresses.BattleshipStatistics,
-				abi: STATISTICS_ABI.abi,
+				abi: STATISTICS_ABI,
 				functionName: 'getPlayerStats',
 				args: [playerAddress],
 			})) as bigint[];
@@ -373,7 +382,7 @@ export class ContractGameService {
 			// Use readContract pattern for cleaner contract reading
 			const stats = (await this.clients.publicClient.readContract({
 				address: this.clients.contractAddresses.BattleshipStatistics,
-				abi: STATISTICS_ABI.abi,
+				abi: STATISTICS_ABI,
 				functionName: 'getGlobalStats',
 			})) as bigint[];
 
@@ -405,7 +414,7 @@ export class ContractGameService {
 			// Use readContract pattern for cleaner contract reading
 			const params = (await this.clients.publicClient.readContract({
 				address: this.clients.contractAddresses.SHIPToken,
-				abi: SHIP_TOKEN_ABI.abi,
+				abi: SHIP_TOKEN_ABI,
 				functionName: 'getRewardParams',
 			})) as [bigint, bigint];
 
@@ -430,7 +439,7 @@ export class ContractGameService {
 			// Use readContract pattern for cleaner contract reading
 			const result = (await this.clients.publicClient.readContract({
 				address: this.clients.contractAddresses.SHIPToken,
-				abi: SHIP_TOKEN_ABI.abi,
+				abi: SHIP_TOKEN_ABI,
 				functionName: 'canReceiveReward',
 				args: [playerAddress],
 			})) as [boolean, string];
@@ -457,7 +466,7 @@ export class ContractGameService {
 			// Use readContract pattern for cleaner contract reading
 			const address = await this.clients.publicClient.readContract({
 				address: this.clients.contractAddresses.GameFactory,
-				abi: GAME_FACTORY_ABI.abi,
+				abi: GAME_FACTORY_ABI,
 				functionName: 'games',
 				args: [BigInt(gameId)],
 			});
