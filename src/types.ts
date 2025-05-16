@@ -420,12 +420,7 @@ export interface BettingInviteAcceptRequest {
 export interface GameBettingInfo {
 	inviteId: string;
 	totalPool: string; // Total staked amount (2x stake)
-	betStatus: 'Open' | 'Matched' | 'Escrowed' | 'Resolved' | 'Cancelled' | 'Expired';
-	gameStatus: 'CREATED' | 'WAITING' | 'SETUP' | 'ACTIVE' | 'COMPLETED' | 'CANCELLED';
 	resolved: boolean;
-	winner?: string;
-	winnerPayout?: string;
-	platformFee?: string;
 }
 
 export interface BettingInviteCreatedEvent {
@@ -481,12 +476,18 @@ export interface BettingInviteAcceptedMessage {
 	acceptor: string;
 }
 
-export interface GameBettingResolvedMessage {
+export interface BettingResolvedMessage {
 	type: 'betting_resolved';
-	gameId: string;
+	gameId: number;
 	winner: string | null;
-	winnerPayout: string;
-	platformFee: string;
+	timestamp: number;
+}
+
+export interface BettingErrorMessage {
+	type: 'betting_error';
+	message: string;
+	gameId: number;
+	timestamp: number;
 }
 // Environment types
 export interface Env {

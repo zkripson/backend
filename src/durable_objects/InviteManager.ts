@@ -101,6 +101,10 @@ export class InviteManager {
 			return this.handleCancelBettingInvite(request);
 		}
 
+		if (path.endsWith('/resolve-betting')) {
+			return this.handleResolveBetting(request);
+		}
+
 		// Status and lookup endpoints (work for both types)
 		if (path.includes('/status/')) {
 			const inviteId = path.split('/').pop();
@@ -908,6 +912,42 @@ export class InviteManager {
 		} catch (error) {
 			console.error('Error resolving betting game:', error);
 			return false;
+		}
+	}
+
+	// Handle POST /resolve-betting - Resolve betting after game completion
+	private async handleResolveBetting(request: Request): Promise<Response> {
+		try {
+			const data = await request.json() as { gameId: string; winner: string | null };
+			
+			if (!data.gameId) {
+				return new Response(
+					JSON.stringify({ success: false, error: 'Game ID is required' }),
+					{ 
+						status: 400,
+						headers: { 'Content-Type': 'application/json' } 
+					}
+				);
+			}
+			
+			const success = await this.resolveBettingGame(data.gameId, data.winner);
+			
+			return new Response(
+				JSON.stringify({ success }),
+				{ headers: { 'Content-Type': 'application/json' } }
+			);
+		} catch (error) {
+			console.error('Error in handleResolveBetting:', error);
+			return new Response(
+				JSON.stringify({ 
+					success: false, 
+					error: error instanceof Error ? error.message : String(error) 
+				}),
+				{ 
+					status: 500,
+					headers: { 'Content-Type': 'application/json' } 
+				}
+			);
 		}
 	}
 

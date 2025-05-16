@@ -7,7 +7,18 @@
  * - On-chain statistics reporting
  * - Contract event monitoring
  */
-import { ForfeitRequest, JoinRequest, SessionData, StartRequest, SubmitBoardRequest, Shot, TimeoutId } from '../types';
+import {
+	ForfeitRequest,
+	JoinRequest,
+	SessionData,
+	StartRequest,
+	SubmitBoardRequest,
+	Shot,
+	TimeoutId,
+	GameBettingInfo,
+	BettingResolvedMessage,
+	BettingErrorMessage,
+} from '../types';
 import { ShipTracker, Ship, Board } from '../utils/shipTracker';
 import { ErrorHandler, ErrorCode, GameValidator, PerformanceMonitor } from '../utils/errorMonitoring';
 import { ContractGameService } from '../services/contractService';
@@ -36,6 +47,10 @@ export class GameSession {
 	// Enhanced game tracking
 	private shots: Shot[] = [];
 	private totalShips: number = 5;
+
+	// Betting game properties
+	private bettingInviteId: string | null = null;
+	private bettingInfo: GameBettingInfo | null = null;
 
 	// Constants
 	private readonly TURN_TIMEOUT_MS = 15 * 1000; // 15 seconds
@@ -96,7 +111,13 @@ export class GameSession {
 	// Initialize a new game session
 	private async handleInitializeRequest(request: Request): Promise<Response> {
 		try {
-			const data = (await request.json()) as { sessionId: string; creator: string };
+			const data = (await request.json()) as {
+				sessionId: string;
+				creator: string;
+				bettingInviteId?: string;
+				onChainGameId?: number;
+				bettingInfo?: GameBettingInfo;
+			};
 
 			if (!data.sessionId || !data.creator) {
 				return new Response(JSON.stringify({ error: 'Session ID and creator address are required' }), {
@@ -111,6 +132,27 @@ export class GameSession {
 			this.createdAt = Date.now();
 			this.lastActivityAt = Date.now();
 
+			// Handle betting game initialization
+			if (data.bettingInviteId) {
+				// Validate betting data
+				if (!data.bettingInfo || !data.bettingInfo.inviteId || !data.bettingInfo.totalPool) {
+					return new Response(JSON.stringify({ error: 'Invalid betting information' }), {
+						status: 400,
+						headers: { 'Content-Type': 'application/json' },
+					});
+				}
+
+				this.bettingInviteId = data.bettingInviteId;
+				this.bettingInfo = data.bettingInfo;
+
+				// If we have an on-chain game ID, use it
+				if (data.onChainGameId) {
+					this.gameId = data.onChainGameId;
+					// We'll need to get the game contract address from the factory
+					// This will be set when the second player joins and the game is fully created
+				}
+			}
+
 			await this.saveSessionData();
 
 			return new Response(
@@ -120,6 +162,8 @@ export class GameSession {
 					creator: data.creator,
 					status: this.status,
 					players: this.players,
+					isBettingGame: !!this.bettingInviteId,
+					bettingInfo: this.bettingInfo,
 				}),
 				{ headers: { 'Content-Type': 'application/json' } }
 			);
@@ -456,6 +500,76 @@ export class GameSession {
 		);
 	}
 
+	// ==================== Betting Integration Methods ====================
+
+	/**
+	 * Handle game completion for betting games
+	 * This is called after the regular endGame method when the game has betting stakes
+	 */
+	private async handleBettingGameCompletion(winner: string | null): Promise<void> {
+		// Only proceed if this is a betting game
+		if (!this.bettingInviteId) {
+			return;
+		}
+
+		try {
+			console.log(`Handling betting game completion: SessionID=${this.sessionId}, Winner=${winner || 'Draw'}`);
+
+			// Get the invite manager to resolve the betting
+			const inviteManager = this.env.INVITE_MANAGER.get(this.env.INVITE_MANAGER.idFromName('global'));
+
+			// Call the betting resolution method on the invite manager via HTTP request
+			const response = await inviteManager.fetch(
+				new Request('https://dummy-url/resolve-betting', {
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify({
+						gameId: this.gameId!.toString(),
+						winner: winner,
+					}),
+				})
+			);
+
+			const result = (await response.json()) as { success: boolean; error?: string };
+			const resolutionSuccess = result.success;
+
+			if (resolutionSuccess) {
+				console.log(`Betting game resolved successfully: GameID=${this.gameId}`);
+
+				// Broadcast betting resolution to connected players
+				const message: BettingResolvedMessage = {
+					type: 'betting_resolved',
+					gameId: this.gameId!,
+					winner: winner,
+					timestamp: Date.now(),
+				};
+				this.broadcastToAll(message);
+			} else {
+				console.error(`Failed to resolve betting for game: GameID=${this.gameId}`, result.error);
+
+				// Broadcast betting error to players
+				const errorMessage: BettingErrorMessage = {
+					type: 'betting_error',
+					message: 'Failed to resolve betting. Please contact support.',
+					gameId: this.gameId!,
+					timestamp: Date.now(),
+				};
+				this.broadcastToAll(errorMessage);
+			}
+		} catch (error) {
+			console.error('Error handling betting game completion:', error);
+
+			// Broadcast betting error to players
+			const errorMessage: BettingErrorMessage = {
+				type: 'betting_error',
+				message: 'Error resolving betting. Please contact support.',
+				gameId: this.gameId!,
+				timestamp: Date.now(),
+			};
+			this.broadcastToAll(errorMessage);
+		}
+	}
+
 	// End the game and handle on-chain reporting
 	private async endGame(winner: string | null, reason: 'COMPLETED' | 'FORFEIT' | 'TIMEOUT' | 'TIME_LIMIT'): Promise<void> {
 		// Prevent double-ending the game
@@ -496,6 +610,8 @@ export class GameSession {
 					gameStartedAt: this.gameStartedAt,
 					gameEndedAt: gameEndedAt,
 					duration: this.gameStartedAt ? gameEndedAt - this.gameStartedAt : null,
+					isBettingGame: !!this.bettingInviteId,
+					bettingInfo: this.bettingInfo,
 				},
 			});
 
@@ -526,6 +642,12 @@ export class GameSession {
 			} catch (saveError) {
 				console.error('Failed to save completed game state:', saveError);
 			}
+		}
+
+		// Handle betting resolution if this is a betting game
+		// This must come after the regular contract submission
+		if (this.bettingInviteId) {
+			await this.handleBettingGameCompletion(winner);
 		}
 	}
 
@@ -788,6 +910,10 @@ export class GameSession {
 			turnTimeoutMs: number;
 			gameTimeoutMs: number;
 		};
+		// Add betting fields
+		isBettingGame: boolean;
+		bettingInviteId?: string;
+		bettingInfo?: GameBettingInfo;
 	} {
 		return {
 			sessionId: this.sessionId,
@@ -806,6 +932,10 @@ export class GameSession {
 				turnTimeoutMs: this.TURN_TIMEOUT_MS,
 				gameTimeoutMs: this.GAME_TIMEOUT_MS,
 			},
+			// Add betting information
+			isBettingGame: !!this.bettingInviteId,
+			bettingInviteId: this.bettingInviteId || undefined,
+			bettingInfo: this.bettingInfo || undefined,
 		};
 	}
 
@@ -942,6 +1072,10 @@ export class GameSession {
 			this.lastActivityAt = sessionData.lastActivityAt;
 			this.currentTurn = sessionData.currentTurn;
 			this.turnStartedAt = sessionData.turnStartedAt;
+
+			// Load betting data
+			this.bettingInviteId = sessionData.bettingInviteId || null;
+			this.bettingInfo = sessionData.bettingInfo || null;
 
 			this.playerBoards = new Map();
 			if (sessionData.playerBoardsArray && Array.isArray(sessionData.playerBoardsArray)) {
