@@ -18,12 +18,14 @@ This document outlines the comprehensive integration flow between the frontend, 
 - Real-time communication via WebSockets
 - Player profiles and game history
 - Invitation system with shareable links
+- **Betting system** with USDC stakes and winner-takes-all payouts
 
-### Blockchain (MegaETH)
+### Blockchain (Base)
 - **Game creation only** (GameFactory.createGame)
 - **Final result submission** (winner, game stats)
 - **Reward distribution** ($SHIP tokens)
 - **Game registration** (linking on-chain game to backend session)
+- **Betting contract** (BattleshipBetting) for USDC staking and payouts
 
 ## Detailed Integration Flow
 
@@ -31,7 +33,7 @@ This document outlines the comprehensive integration flow between the frontend, 
 
 ```
 ┌─────────┐         ┌─────────────┐         ┌─────────────┐
-│ Player 1 │         │   Backend   │         │  MegaETH    │
+│ Player 1 │         │   Backend   │         │  Base    │
 └────┬────┘         └──────┬──────┘         └──────┬──────┘
      │                     │                       │
      │ 1. Create Invite    │                       │
@@ -46,7 +48,7 @@ This document outlines the comprehensive integration flow between the frontend, 
      │ 4. Share Invite Link│                       │
      │                     │                       │
 ┌────┴────┐         ┌─────┴──────┐         ┌──────┴──────┐
-│ Player 2 │         │   Backend   │         │  MegaETH    │
+│ Player 2 │         │   Backend   │         │  Base    │
 └────┬────┘         └──────┬──────┘         └──────┬──────┘
      │                     │                       │
      │ 5. Accept Invite    │                       │
@@ -64,11 +66,53 @@ This document outlines the comprehensive integration flow between the frontend, 
 4. Player 2 accepts the invite, automatically joining the session
 5. Both players connect via WebSocket for real-time updates
 
+### 1.5 Betting Game Creation (Optional)
+
+```
+┌─────────┐         ┌─────────────┐         ┌─────────────┐
+│ Player 1 │         │   Backend   │         │  Base    │
+└────┬────┘         └──────┬──────┘         └──────┬──────┘
+     │                     │                       │
+     │ 1. Create Betting Invite                    │
+     │   (with stake amount)                       │
+     │────────────────────►│                       │
+     │                     │ 2. Create Betting     │
+     │                     │    Invite On-chain    │
+     │                     │──────────────────────►│
+     │                     │                       │
+     │ 3. Betting Invite Created                   │
+     │◄────────────────────│                       │
+     │                     │                       │
+┌────┴────┐         ┌─────┴──────┐         ┌──────┴──────┐
+│ Player 2 │         │   Backend   │         │  Base    │
+└────┬────┘         └──────┬──────┘         └──────┬──────┘
+     │                     │                       │
+     │ 4. Accept Betting   │                       │
+     │────────────────────►│                       │
+     │                     │ 5. Accept On-chain   │
+     │                     │──────────────────────►│
+     │                     │                       │
+     │                     │ 6. Create Game from  │
+     │                     │    Betting Invite    │
+     │                     │──────────────────────►│
+     │                     │                       │
+     │ 7. Game Ready       │                       │
+     │◄────────────────────│                       │
+     │                     │                       │
+```
+
+**Betting Implementation:**
+- `POST /api/invites/create-betting` - Create betting invite with USDC stake
+- `POST /api/invites/accept-betting` - Accept and match stake
+- Backend interacts with `BattleshipBetting` contract for escrow
+- Game creation happens automatically when stakes are matched
+- 5% platform fee deducted from winner's payout
+
 ### 2. Contract Creation & Registration
 
 ```
 ┌─────────┐         ┌─────────────┐         ┌─────────────┐
-│ Player 1 │         │   Backend   │         │  MegaETH    │
+│ Player 1 │         │   Backend   │         │  Base    │
 └────┬────┘         └──────┬──────┘         └──────┬──────┘
      │                     │                       │
      │ WebSocket: player_joined notification       │
@@ -99,7 +143,7 @@ This document outlines the comprehensive integration flow between the frontend, 
 
 ```
 ┌─────────┐         ┌─────────────┐         ┌─────────────┐
-│ Player 1 │         │   Backend   │         │  MegaETH    │
+│ Player 1 │         │   Backend   │         │  Base    │
 └────┬────┘         └──────┬──────┘         └──────┬──────┘
      │                     │                       │
      │ 1. Place Ships (UI) │                       │
@@ -116,7 +160,7 @@ This document outlines the comprehensive integration flow between the frontend, 
      │◄────────────────────│                       │
      │                     │                       │
 ┌────┴────┐         ┌─────┴──────┐         ┌──────┴──────┐
-│ Player 2 │         │   Backend   │         │  MegaETH    │
+│ Player 2 │         │   Backend   │         │  Base    │
 └────┬────┘         └──────┬──────┘         └──────┬──────┘
      │                     │                       │
      │ 6. Submit Board     │                       │
@@ -138,7 +182,7 @@ This document outlines the comprehensive integration flow between the frontend, 
 
 ```
 ┌─────────┐         ┌─────────────┐         ┌─────────────┐
-│ Player 1 │         │   Backend   │         │  MegaETH    │
+│ Player 1 │         │   Backend   │         │  Base    │
 └────┬────┘         └──────┬──────┘         └──────┬──────┘
      │                     │                       │
      │ 1. Select Target    │                       │
@@ -172,7 +216,7 @@ This document outlines the comprehensive integration flow between the frontend, 
 
 ```
 ┌─────────┐         ┌─────────────┐         ┌─────────────┐
-│ Winner   │         │   Backend   │         │  MegaETH    │
+│ Winner   │         │   Backend   │         │  Base    │
 └────┬────┘         └──────┬──────┘         └──────┬──────┘
      │                     │                       │
      │ 1. Game Ends        │                       │
@@ -199,6 +243,35 @@ This document outlines the comprehensive integration flow between the frontend, 
 - Backend calls **simplified contract function** to submit results
 - Contract **automatically distributes** $SHIP token rewards
 - No need for players to manually claim rewards
+- For betting games, additional flow:
+  - Backend calls `BattleshipBetting.resolveGame()` 
+  - Winner receives 95% of total pool (2x stake minus 5% fee)
+  - Platform receives 5% fee
+  - USDC distributed automatically
+
+### 5.5 Betting Game Resolution
+
+```
+┌─────────┐         ┌─────────────┐         ┌─────────────┐
+│ Winner   │         │   Backend   │         │  Base    │
+└────┬────┘         └──────┬──────┘         └──────┬──────┘
+     │                     │                       │
+     │ Game Ends (Betting) │                       │
+     │                     │ 1. Submit Game Result │
+     │                     │──────────────────────►│
+     │                     │                       │
+     │                     │ 2. Resolve Betting   │
+     │                     │──────────────────────►│
+     │                     │   - Distribute USDC   │
+     │                     │   - Platform fee     │
+     │                     │                       │
+     │ 3. WebSocket: betting_resolved              │
+     │◄────────────────────│                       │
+     │                     │                       │
+     │ 4. USDC Payout      │◄──────────────────────│
+     │◄────────────────────────────────────────────│
+     │                     │                       │
+```
 
 ## Frontend Integration Guide
 
@@ -257,6 +330,17 @@ ws.onmessage = (event) => {
             
         case 'game_over':
             showGameOverScreen(message.winner, message.reason);
+            if (message.finalState.isBettingGame) {
+                showBettingInfo(message.finalState.bettingInfo);
+            }
+            break;
+            
+        case 'betting_resolved':
+            showBettingPayout(message.winner, message.gameId);
+            break;
+            
+        case 'betting_error':
+            showBettingError(message.message);
             break;
     }
 };

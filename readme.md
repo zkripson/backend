@@ -40,7 +40,8 @@ A production-grade Cloudflare Workers backend service for the ZK Battleship game
 - **Game creation** on Base blockchain
 - **Final results** stored on-chain
 - **$SHIP token rewards** automatically distributed
-- **Minimal gas costs** (only 2 transactions per game)
+- **Minimal gas costs** (only 2-3 transactions per game)
+- **USDC betting** with escrow and automatic payouts
 
 ### Production-Ready Infrastructure
 - **Durable Objects** for reliable state management
@@ -213,6 +214,9 @@ ws://backend.url/api/game-updates?sessionId=123&address=0x1234
 | `/api/invites/cancel` | POST | Cancel invitation |
 | `/api/invites/:id` | GET | Get invitation status |
 | `/api/invites/code/:code` | GET | Get invitation by code |
+| `/api/invites/create-betting` | POST | Create betting invitation |
+| `/api/invites/accept-betting` | POST | Accept betting invitation |
+| `/api/invites/cancel-betting` | POST | Cancel betting invitation |
 
 ### Admin & Monitoring
 
@@ -248,7 +252,24 @@ ws://backend.url/api/game-updates?sessionId=123&address=0x1234
 {
     "type": "game_over",
     "winner": "0x1234...",
-    "reason": "COMPLETED"
+    "reason": "COMPLETED",
+    "finalState": { /* includes betting info if applicable */ }
+}
+
+// Betting resolved
+{
+    "type": "betting_resolved",
+    "gameId": 123,
+    "winner": "0x1234...",
+    "timestamp": 1234567890
+}
+
+// Betting error
+{
+    "type": "betting_error",
+    "message": "Failed to resolve betting",
+    "gameId": 123,
+    "timestamp": 1234567890
 }
 ```
 
@@ -264,6 +285,32 @@ ws://backend.url/api/game-updates?sessionId=123&address=0x1234
 {
     "type": "chat",
     "text": "Good game!"
+}
+```
+
+## 💰 Betting System
+
+### How It Works
+1. Players can create betting invitations with USDC stakes
+2. When another player accepts, their stake is matched
+3. Winner takes 95% of the pool (190% of their stake)
+4. Platform receives 5% fee
+5. Automatic USDC distribution on game completion
+
+### Betting Flow
+```javascript
+// Create betting invite
+POST /api/invites/create-betting
+{
+    "creator": "0x1234...",
+    "stakeAmount": "10" // 10 USDC
+}
+
+// Accept betting invite
+POST /api/invites/accept-betting
+{
+    "code": "ABC123",
+    "player": "0x5678..."
 }
 ```
 
@@ -342,6 +389,9 @@ The project is configured with GitHub Actions to automatically deploy to Cloudfl
    - `BASE_RPC_URL`: Base Mainnet RPC URL
    - `BASE_SEPOLIA_RPC_URL`: Base Sepolia RPC URL
    - `GAME_FACTORY_ADDRESS`: Address of the game factory contract
+   - `BATTLESHIP_BETTING_ADDRESS`: Address of the betting contract
+   - `USDC_TOKEN_ADDRESS`: Address of the USDC token contract
+   - `ENABLE_BETTING`: Set to 'true' to enable betting features
    
    [Detailed setup instructions](./docs/github-actions-setup.md)
 

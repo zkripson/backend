@@ -73,6 +73,10 @@ interface GameSession {
     gameTimeoutId: TimeoutId | null;
     TURN_TIMEOUT_MS: 60000;  // 60 seconds
     GAME_TIMEOUT_MS: 600000; // 10 minutes
+    
+    // Betting game data
+    bettingInviteId?: string;
+    bettingInfo?: GameBettingInfo;
 }
 ```
 
@@ -232,7 +236,67 @@ interface GameStateMessage {
 }
 ```
 
-## 5. Blockchain Data Integration
+## 5. Betting System Data
+
+### Betting Invitation Structure
+
+```typescript
+interface BettingInvite {
+    id: string;
+    code: string | null;
+    creator: string;
+    stakeAmount: string;      // USDC amount (6 decimals)
+    acceptor: string | null;
+    createdAt: number;
+    expiresAt: number;
+    onChainInviteId: string | null;
+    transactionHash: `0x${string}` | null;
+    betStatus: 'Open' | 'Matched' | 'Escrowed' | 'Resolved' | 'Cancelled' | 'Expired';
+    gameStatus?: 'CREATED' | 'WAITING' | 'SETUP' | 'ACTIVE' | 'COMPLETED' | 'CANCELLED';
+    gameId: string | null;
+    sessionId: string | null;
+    fundsDistributed: boolean;
+}
+
+interface GameBettingInfo {
+    inviteId: string;
+    totalPool: string;  // Total USDC staked (2x stake)
+    resolved: boolean;
+}
+```
+
+### Betting Flow Data
+
+```typescript
+// Betting invite creation
+interface BettingInviteCreateRequest {
+    creator: string;
+    stakeAmount: string;
+}
+
+// Betting acceptance
+interface BettingInviteAcceptRequest {
+    inviteId: string;
+    acceptor: string;
+}
+
+// WebSocket messages for betting
+type BettingResolvedMessage = {
+    type: 'betting_resolved';
+    gameId: number;
+    winner: string | null;
+    timestamp: number;
+}
+
+type BettingErrorMessage = {
+    type: 'betting_error';
+    message: string;
+    gameId: number;
+    timestamp: number;
+}
+```
+
+## 6. Blockchain Data Integration
 
 ### Minimal On-Chain Storage
 
@@ -263,6 +327,23 @@ async function submitGameResult(result: GameResult) {
     );
     
     // Triggers reward distribution automatically
+}
+
+// Betting-specific blockchain data
+interface BettingBlockchainData {
+    inviteId: number;
+    creator: string;
+    stakeAmount: bigint;  // USDC amount in wei
+    totalPool: bigint;
+    winner: string | null;
+    platformFee: bigint;
+    resolved: boolean;
+}
+
+// Submit betting game result
+async function resolveBettingGame(gameId: number, winner: string | null) {
+    await bettingContract.resolveGame(gameId, winner);
+    // Automatically distributes USDC to winner
 }
 ```
 
