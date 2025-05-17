@@ -600,9 +600,9 @@ export class GameSession {
 			// Send final game state to all connected players
 			const gameEndedAt = Date.now();
 			const playerStats = this.calculatePlayerStats();
-			
+
 			// Send enhanced game over event with player stats
-			const gameOverMessage: GameOverMessage = {
+			const gameOverMessage: any = {
 				type: 'game_over',
 				status: this.status,
 				winner: winner,
@@ -618,7 +618,7 @@ export class GameSession {
 				},
 				playerStats: playerStats,
 			};
-			
+
 			this.broadcastToAll(gameOverMessage);
 
 			// Submit final result to contract - wrapped in try/catch to ensure it doesn't prevent game ending
@@ -813,7 +813,7 @@ export class GameSession {
 
 		console.log(`Determining winner by sunk ships count due to timeout`);
 		const sunkShipsCount = this.getSunkShipsCount();
-		
+
 		// The winner is the player who sunk more ships on their opponent's board
 		// So we need to invert the logic - the player with fewer sunk ships on their own board
 		// (meaning they defended better) is winning
@@ -823,7 +823,7 @@ export class GameSession {
 
 		// Calculate how many ships each player sunk on their opponent's board
 		for (const player of this.players) {
-			const opponent = this.players.find(p => p !== player);
+			const opponent = this.players.find((p) => p !== player);
 			if (opponent) {
 				shipsSunkByPlayer[player] = sunkShipsCount[opponent] || 0;
 			}
@@ -845,7 +845,9 @@ export class GameSession {
 			winner = this.players[1]; // Second player wins in case of no activity
 		}
 
-		console.log(`Game ending due to time limit. Winner: ${winner || 'Tie'}, Ships sunk by each player: ${JSON.stringify(shipsSunkByPlayer)}`);
+		console.log(
+			`Game ending due to time limit. Winner: ${winner || 'Tie'}, Ships sunk by each player: ${JSON.stringify(shipsSunkByPlayer)}`
+		);
 		await this.endGame(winner, 'TIME_LIMIT');
 	}
 

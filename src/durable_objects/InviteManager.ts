@@ -131,10 +131,10 @@ export class InviteManager {
 	// Handle POST /create - Create a regular (non-betting) invitation
 	private async handleCreateInvite(request: Request): Promise<Response> {
 		try {
-			const bodyObject = await request.json();
-			let data: InvitationCreateRequest;
+			const bodyText = await request.text();
+			let data;
 			try {
-				data = bodyObject as InvitationCreateRequest;
+				data = JSON.parse(bodyText);
 			} catch (error) {
 				return new Response(
 					JSON.stringify({
