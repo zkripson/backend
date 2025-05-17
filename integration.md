@@ -103,7 +103,7 @@ Content-Type: application/json
 GET /api/invites/:id
 ```
 
-**Response:**
+**Response (Regular Invitation):**
 ```json
 {
     "id": "550e8400-e29b-41d4-a716-446655440000",
@@ -114,7 +114,28 @@ GET /api/invites/:id
     "sessionId": "123e4567-e89b-12d3-a456-426614174000",
     "status": "pending",
     "acceptedBy": null,
-    "acceptedAt": null
+    "acceptedAt": null,
+    "isBettingGame": false,
+    "isExpired": false
+}
+```
+
+**Response (Betting Invitation):**
+```json
+{
+    "id": "550e8400-e29b-41d4-a716-446655440000",
+    "code": "BET-ABC-DEF",
+    "creator": "0x1234567890abcdef1234567890abcdef12345678",
+    "createdAt": 1234567890000,
+    "expiresAt": 1234567890000,
+    "sessionId": "123e4567-e89b-12d3-a456-426614174000",
+    "status": "Open",
+    "acceptedBy": null,
+    "gameId": null,
+    "stakeAmount": "10",
+    "isBettingGame": true,
+    "onChainInviteId": "42",
+    "isExpired": false
 }
 ```
 
@@ -123,7 +144,7 @@ GET /api/invites/:id
 GET /api/invites/code/:code
 ```
 
-**Response:**
+**Response (Regular Invitation):**
 ```json
 {
     "id": "550e8400-e29b-41d4-a716-446655440000",
@@ -134,7 +155,28 @@ GET /api/invites/code/:code
     "sessionId": "123e4567-e89b-12d3-a456-426614174000",
     "status": "pending",
     "acceptedBy": null,
-    "acceptedAt": null
+    "acceptedAt": null,
+    "isBettingGame": false,
+    "isExpired": false
+}
+```
+
+**Response (Betting Invitation):**
+```json
+{
+    "id": "550e8400-e29b-41d4-a716-446655440000",
+    "code": "BET-ABC-DEF",
+    "creator": "0x1234567890abcdef1234567890abcdef12345678",
+    "createdAt": 1234567890000,
+    "expiresAt": 1234567890000,
+    "sessionId": "123e4567-e89b-12d3-a456-426614174000",
+    "status": "Open",
+    "acceptedBy": null,
+    "gameId": null,
+    "stakeAmount": "10",
+    "isBettingGame": true,
+    "onChainInviteId": "42",
+    "isExpired": false
 }
 ```
 
