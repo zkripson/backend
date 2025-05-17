@@ -11,6 +11,10 @@ GAME_FACTORY_ADDRESS = "0x58690125194c12CeEEd78F117DfF38D2927dc7b3"
 [observability.logs]
 enabled = true
 
+routes = [
+  { pattern = "api.bship.fun", custom_domain = true }
+]
+
 # Durable Object bindings
 [[durable_objects.bindings]]
 name = "GAME_SESSIONS"
