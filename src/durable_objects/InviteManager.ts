@@ -43,26 +43,62 @@ export class InviteManager {
 		// Load invites on startup
 		this.state.blockConcurrencyWhile(async () => {
 			// Load regular invites
-			let storedInvites = (await this.state.storage.get('invites')) as Invitation[];
-			if (!Array.isArray(storedInvites)) {
-				storedInvites = [];
-			}
-			for (const invite of storedInvites) {
-				this.invites.set(invite.id, invite);
-				if (invite.code) {
-					this.codeToInviteMap.set(invite.code, invite.id);
+			const inviteIds = (await this.state.storage.get('inviteIds')) as string[] | null;
+			if (inviteIds && Array.isArray(inviteIds)) {
+				// Load invites individually
+				for (const id of inviteIds) {
+					const invite = (await this.state.storage.get(`invite:${id}`)) as Invitation | null;
+					if (invite) {
+						this.invites.set(invite.id, invite);
+						if (invite.code) {
+							this.codeToInviteMap.set(invite.code, invite.id);
+						}
+					}
+				}
+			} else {
+				// Fallback to old format for migration
+				let storedInvites = (await this.state.storage.get('invites')) as Invitation[];
+				if (Array.isArray(storedInvites)) {
+					for (const invite of storedInvites) {
+						this.invites.set(invite.id, invite);
+						if (invite.code) {
+							this.codeToInviteMap.set(invite.code, invite.id);
+						}
+					}
+					// Migrate to new format
+					await this.saveInvites();
+					// Clean up old format
+					await this.state.storage.delete('invites');
 				}
 			}
 
 			// Load betting invites
-			let storedBettingInvites = (await this.state.storage.get('bettingInvites')) as BettingInvite[];
-			if (!Array.isArray(storedBettingInvites)) {
-				storedBettingInvites = [];
-			}
-			for (const invite of storedBettingInvites) {
-				this.bettingInvites.set(invite.id, invite);
-				if (invite.code) {
-					this.codeToInviteMap.set(invite.code, invite.id);
+			const bettingInviteIds = (await this.state.storage.get('bettingInviteIds')) as string[] | null;
+			if (bettingInviteIds && Array.isArray(bettingInviteIds)) {
+				// Load betting invites individually
+				for (const id of bettingInviteIds) {
+					const invite = (await this.state.storage.get(`betting:${id}`)) as BettingInvite | null;
+					if (invite) {
+						this.bettingInvites.set(invite.id, invite);
+						if (invite.code) {
+							this.codeToInviteMap.set(invite.code, invite.id);
+						}
+					}
+				}
+			} else {
+				// Fallback to old format for migration
+				let storedBettingInvites = (await this.state.storage.get('bettingInvites')) as BettingInvite[];
+				if (Array.isArray(storedBettingInvites)) {
+					for (const invite of storedBettingInvites) {
+						this.bettingInvites.set(invite.id, invite);
+						if (invite.code) {
+							this.codeToInviteMap.set(invite.code, invite.id);
+						}
+					}
+					// Migrate to new format
+					await this.saveBettingInvites();
+					// Clean up old format
+					await this.state.storage.delete('bettingInvites');
 				}
 			}
 
@@ -953,6 +989,69 @@ export class InviteManager {
 		this.state.storage.setAlarm(Date.now() + 24 * 60 * 60 * 1000);
 	}
 
+	// Add a more aggressive cleanup method that can be called manually
+	public async cleanupOldInvites(daysToKeep: number = 1): Promise<void> {
+		const now = Date.now();
+		const cutoffTime = now - (daysToKeep * 24 * 60 * 60 * 1000);
+		let removedCount = 0;
+
+		// Clean up regular invites
+		const toRemoveRegular: string[] = [];
+		for (const [id, invite] of this.invites.entries()) {
+			// Remove expired invites older than cutoff
+			if ((invite.status === 'expired' || invite.status === 'canceled') && invite.createdAt < cutoffTime) {
+				toRemoveRegular.push(id);
+			}
+			// Remove pending invites that are expired
+			else if (invite.status === 'pending' && now > invite.expiresAt) {
+				toRemoveRegular.push(id);
+			}
+		}
+
+		// Clean up betting invites
+		const toRemoveBetting: string[] = [];
+		for (const [id, invite] of this.bettingInvites.entries()) {
+			// Remove resolved/cancelled invites older than cutoff
+			if ((invite.betStatus === 'Resolved' || invite.betStatus === 'Cancelled' || invite.betStatus === 'Expired') && 
+				invite.createdAt < cutoffTime) {
+				toRemoveBetting.push(id);
+			}
+			// Remove open invites that are expired
+			else if (invite.betStatus === 'Open' && now > invite.expiresAt) {
+				toRemoveBetting.push(id);
+			}
+		}
+
+		// Remove old invitations
+		for (const id of toRemoveRegular) {
+			const invite = this.invites.get(id);
+			if (invite && invite.code) {
+				this.codeToInviteMap.delete(invite.code);
+			}
+			this.invites.delete(id);
+			await this.state.storage.delete(`invite:${id}`);
+			removedCount++;
+		}
+
+		for (const id of toRemoveBetting) {
+			const invite = this.bettingInvites.get(id);
+			if (invite && invite.code) {
+				this.codeToInviteMap.delete(invite.code);
+			}
+			this.bettingInvites.delete(id);
+			await this.state.storage.delete(`betting:${id}`);
+			removedCount++;
+		}
+
+		// Update the ID lists
+		if (removedCount > 0) {
+			await this.saveInvites();
+			await this.saveBettingInvites();
+		}
+
+		console.log(`Cleaned up ${removedCount} old invites`);
+	}
+
 	// Handle alarm for cleanup
 	private async handleCleanupAlarm(): Promise<void> {
 		const now = Date.now();
@@ -999,6 +1098,8 @@ export class InviteManager {
 				this.codeToInviteMap.delete(invite.code);
 			}
 			this.invites.delete(id);
+			// Also remove from storage
+			await this.state.storage.delete(`invite:${id}`);
 		}
 
 		for (const id of toRemoveBetting) {
@@ -1007,6 +1108,8 @@ export class InviteManager {
 				this.codeToInviteMap.delete(invite.code);
 			}
 			this.bettingInvites.delete(id);
+			// Also remove from storage
+			await this.state.storage.delete(`betting:${id}`);
 		}
 
 		// Save changes if needed
@@ -1021,11 +1124,55 @@ export class InviteManager {
 
 	// Save regular invites to durable storage
 	private async saveInvites(): Promise<void> {
-		await this.state.storage.put('invites', Array.from(this.invites.values()));
+		// Store each invite individually with a prefixed key
+		const transaction = this.state.storage.transaction(async txn => {
+			// First, get all existing invite keys to remove old ones
+			const existingKeys = await txn.list({ prefix: 'invite:' });
+			
+			// Remove old invite keys not in current map
+			for (const key of existingKeys.keys()) {
+				const id = key.substring('invite:'.length);
+				if (!this.invites.has(id)) {
+					await txn.delete(key);
+				}
+			}
+			
+			// Store current invites
+			for (const [id, invite] of this.invites.entries()) {
+				await txn.put(`invite:${id}`, invite);
+			}
+		});
+		
+		await transaction;
+		
+		// Also store a simple list of IDs for quick reference
+		await this.state.storage.put('inviteIds', Array.from(this.invites.keys()));
 	}
 
 	// Save betting invites to durable storage
 	private async saveBettingInvites(): Promise<void> {
-		await this.state.storage.put('bettingInvites', Array.from(this.bettingInvites.values()));
+		// Store each betting invite individually with a prefixed key
+		const transaction = this.state.storage.transaction(async txn => {
+			// First, get all existing betting invite keys to remove old ones
+			const existingKeys = await txn.list({ prefix: 'betting:' });
+			
+			// Remove old betting invite keys not in current map
+			for (const key of existingKeys.keys()) {
+				const id = key.substring('betting:'.length);
+				if (!this.bettingInvites.has(id)) {
+					await txn.delete(key);
+				}
+			}
+			
+			// Store current betting invites
+			for (const [id, invite] of this.bettingInvites.entries()) {
+				await txn.put(`betting:${id}`, invite);
+			}
+		});
+		
+		await transaction;
+		
+		// Also store a simple list of IDs for quick reference
+		await this.state.storage.put('bettingInviteIds', Array.from(this.bettingInvites.keys()));
 	}
 }
