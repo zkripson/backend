@@ -759,27 +759,29 @@ export class InviteManager {
 
 	// Handle GET /status/:id - Get invitation status by ID (works for both types)
 	private handleGetInviteStatus(inviteId: string): Response {
+		const now = Date.now();
+		
 		// Check regular invites first
 		if (this.invites.has(inviteId)) {
 			const invite = this.invites.get(inviteId)!;
 
-			// Check if the invitation has expired
-			if (invite.status === 'pending' && Date.now() > invite.expiresAt) {
-				invite.status = 'expired';
-				this.saveInvites(); // Don't await, let it update in the background
-			}
+			// Check if the invitation has expired (but don't save status change)
+			const displayStatus = (invite.status === 'pending' && now > invite.expiresAt) 
+				? 'expired' 
+				: invite.status;
 
 			return new Response(
 				JSON.stringify({
 					id: invite.id,
 					creator: invite.creator,
-					status: invite.status,
+					status: displayStatus,
 					createdAt: invite.createdAt,
 					expiresAt: invite.expiresAt,
 					sessionId: invite.sessionId,
 					acceptedBy: invite.acceptedBy,
 					acceptedAt: invite.acceptedAt,
 					isBettingGame: false,
+					isExpired: now > invite.expiresAt,
 				}),
 				{
 					headers: { 'Content-Type': 'application/json' },
@@ -791,17 +793,16 @@ export class InviteManager {
 		if (this.bettingInvites.has(inviteId)) {
 			const invite = this.bettingInvites.get(inviteId)!;
 
-			// Check if the betting invitation has expired
-			if (invite.betStatus === 'Open' && Date.now() > invite.expiresAt) {
-				invite.betStatus = 'Expired';
-				this.saveBettingInvites(); // Don't await, let it update in the background
-			}
+			// Check if the betting invitation has expired (but don't save status change)
+			const displayStatus = (invite.betStatus === 'Open' && now > invite.expiresAt) 
+				? 'Expired' 
+				: invite.betStatus;
 
 			return new Response(
 				JSON.stringify({
 					id: invite.id,
 					creator: invite.creator,
-					status: invite.betStatus,
+					status: displayStatus,
 					createdAt: invite.createdAt,
 					expiresAt: invite.expiresAt,
 					sessionId: invite.sessionId,
@@ -810,6 +811,7 @@ export class InviteManager {
 					stakeAmount: invite.stakeAmount,
 					isBettingGame: true,
 					onChainInviteId: invite.onChainInviteId,
+					isExpired: now > invite.expiresAt,
 				}),
 				{
 					headers: { 'Content-Type': 'application/json' },
@@ -985,8 +987,8 @@ export class InviteManager {
 
 	// Schedule cleanup of expired invitations
 	private scheduleCleanup(): void {
-		// Schedule alarm for once a day
-		this.state.storage.setAlarm(Date.now() + 24 * 60 * 60 * 1000);
+		// Schedule alarm for every 6 hours to clean up expired invites more frequently
+		this.state.storage.setAlarm(Date.now() + 6 * 60 * 60 * 1000);
 	}
 
 	// Add a more aggressive cleanup method that can be called manually
@@ -1055,67 +1057,67 @@ export class InviteManager {
 	// Handle alarm for cleanup
 	private async handleCleanupAlarm(): Promise<void> {
 		const now = Date.now();
-		let changed = false;
+		let removedCount = 0;
 
 		// Clean up regular invites
 		const toRemoveRegular: string[] = [];
 		for (const [id, invite] of this.invites.entries()) {
-			const sevenDaysAgo = now - 7 * 24 * 60 * 60 * 1000;
-
-			if (invite.createdAt < sevenDaysAgo) {
+			// Remove any invite that has passed its expiration time (typically 24 hours)
+			if (now > invite.expiresAt) {
 				toRemoveRegular.push(id);
-				changed = true;
 				continue;
 			}
 
-			if (invite.status === 'pending' && now > invite.expiresAt) {
-				invite.status = 'expired';
-				changed = true;
+			// Also remove very old invites regardless of status (failsafe)
+			const sevenDaysAgo = now - 7 * 24 * 60 * 60 * 1000;
+			if (invite.createdAt < sevenDaysAgo) {
+				toRemoveRegular.push(id);
 			}
 		}
 
 		// Clean up betting invites
 		const toRemoveBetting: string[] = [];
 		for (const [id, invite] of this.bettingInvites.entries()) {
-			const sevenDaysAgo = now - 7 * 24 * 60 * 60 * 1000;
-
-			if (invite.createdAt < sevenDaysAgo) {
+			// Remove any betting invite that has passed its expiration time
+			if (now > invite.expiresAt) {
 				toRemoveBetting.push(id);
-				changed = true;
 				continue;
 			}
 
-			if (invite.betStatus === 'Open' && now > invite.expiresAt) {
-				invite.betStatus = 'Expired';
-				changed = true;
+			// Also remove very old invites regardless of status (failsafe)
+			const sevenDaysAgo = now - 7 * 24 * 60 * 60 * 1000;
+			if (invite.createdAt < sevenDaysAgo) {
+				toRemoveBetting.push(id);
 			}
 		}
 
-		// Remove old invitations
+		// Remove expired regular invitations
 		for (const id of toRemoveRegular) {
 			const invite = this.invites.get(id);
 			if (invite && invite.code) {
 				this.codeToInviteMap.delete(invite.code);
 			}
 			this.invites.delete(id);
-			// Also remove from storage
 			await this.state.storage.delete(`invite:${id}`);
+			removedCount++;
 		}
 
+		// Remove expired betting invitations
 		for (const id of toRemoveBetting) {
 			const invite = this.bettingInvites.get(id);
 			if (invite && invite.code) {
 				this.codeToInviteMap.delete(invite.code);
 			}
 			this.bettingInvites.delete(id);
-			// Also remove from storage
 			await this.state.storage.delete(`betting:${id}`);
+			removedCount++;
 		}
 
-		// Save changes if needed
-		if (changed) {
+		// Update the ID lists if anything was removed
+		if (removedCount > 0) {
 			await this.saveInvites();
 			await this.saveBettingInvites();
+			console.log(`Cleanup: Removed ${removedCount} expired invites`);
 		}
 
 		// Reschedule next cleanup
